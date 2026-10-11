@@ -67,7 +67,7 @@ def _is_junk_game_name(name: str) -> bool:
     return not cleaned or cleaned in JUNK_GAME_NAMES or cleaned.startswith("app ")
 
 
-def _upsert_game(games_map: dict, app_id, name: str, logo: str, hours: float, icon: str = ""):
+def _upsert_game(games_map: dict, app_id, name: str, logo: str, hours: float, icon: str = "", allow_new: bool = True):
     try:
         app_id = int(app_id)
     except (TypeError, ValueError):
@@ -78,6 +78,8 @@ def _upsert_game(games_map: dict, app_id, name: str, logo: str, hours: float, ic
     clean_name = "" if _is_junk_game_name(name) else (name or "").strip()
     existing = games_map.get(app_id)
     if not existing:
+        if not allow_new:
+            return
         games_map[app_id] = {
             "appid": app_id,
             "name": clean_name or f"App {app_id}",
@@ -96,14 +98,27 @@ def _upsert_game(games_map: dict, app_id, name: str, logo: str, hours: float, ic
 
 
 def _community_games_from_payload(data) -> list:
+    games = []
     if isinstance(data, list):
-        return data
-    if isinstance(data, dict):
-        return data.get("rgGames") or data.get("games") or data.get("response", {}).get("games") or []
-    return []
+        games = data
+    elif isinstance(data, dict):
+        games = (
+            data.get("rgGames")
+            or data.get("rgPerfectGames")
+            or data.get("rgGamesPerfect")
+            or data.get("games")
+            or data.get("response", {}).get("games")
+            or []
+        )
+    if not isinstance(games, list) or not games:
+        return []
+    first = games[0]
+    if not isinstance(first, dict) or not (first.get("appid") or first.get("appID") or first.get("appId")):
+        return []
+    return games
 
 
-def _ingest_game_dicts(games, games_map: dict):
+def _ingest_game_dicts(games, games_map: dict, allow_new: bool = True):
     if not isinstance(games, list):
         return
     for game in games:
@@ -121,14 +136,15 @@ def _ingest_game_dicts(games, games_map: dict):
             game.get("logo", ""),
             hours,
             game.get("icon", ""),
+            allow_new=allow_new,
         )
 
 
-def _ingest_community_page(text: str, games_map: dict):
+def _ingest_community_page(text: str, games_map: dict, allow_new: bool = True):
     if not text:
         return
     decoder = json.JSONDecoder()
-    for marker in ("rgGames", "rgPerfectGames", "rgRecentGames", "rgGamesPerfect"):
+    for marker in ("rgGames", "rgPerfectGames", "rgGamesPerfect", "rgRecentGames"):
         idx = 0
         while True:
             found = text.find(marker, idx)
@@ -140,7 +156,7 @@ def _ingest_community_page(text: str, games_map: dict):
                 continue
             try:
                 games, _ = decoder.raw_decode(text[start:])
-                _ingest_game_dicts(games, games_map)
+                _ingest_game_dicts(games, games_map, allow_new=allow_new)
             except json.JSONDecodeError:
                 pass
             idx = found + len(marker)
@@ -165,18 +181,27 @@ def _ingest_community_page(text: str, games_map: dict):
             name_el.get_text(strip=True) if name_el else "",
             "",
             hours,
+            allow_new=allow_new,
         )
-    # Achievement showcase / stats links still list games you 100%'d even after EA Play lapses.
-    for link in soup.select("a[href*='/stats/']"):
-        match = re.search(r"/stats/(?:appid/)?(\d+)", link.get("href") or "")
-        if match:
-            link_name = link.get_text(" ", strip=True)[:80]
-            if _is_junk_game_name(link_name):
-                link_name = ""
-            _upsert_game(games_map, match.group(1), link_name, "", 0.0)
 
 
-async def _merge_community_json(client: httpx.AsyncClient, url: str, games_map: dict):
+def _upsert_api_game(games_map: dict, game: dict):
+    app_id = game.get("appid")
+    icon_hash = game.get("img_icon_url") or ""
+    logo_hash = game.get("img_logo_url") or icon_hash
+    icon = f"{COMMUNITY_CDN}/steamcommunity/public/images/apps/{app_id}/{icon_hash}.jpg" if icon_hash else ""
+    logo = f"{COMMUNITY_CDN}/steamcommunity/public/images/apps/{app_id}/{logo_hash}.jpg" if logo_hash else ""
+    _upsert_game(
+        games_map,
+        app_id,
+        game.get("name", f"App {app_id}"),
+        logo,
+        round(game.get("playtime_forever", 0) / 60, 1),
+        icon,
+    )
+
+
+async def _merge_community_json(client: httpx.AsyncClient, url: str, games_map: dict, allow_new: bool = True):
     try:
         res = await client.get(url, timeout=15.0)
         if res.status_code != 200:
@@ -185,26 +210,29 @@ async def _merge_community_json(client: httpx.AsyncClient, url: str, games_map: 
         if not content:
             return
         if content.startswith(b"<"):
-            _ingest_community_page(res.text, games_map)
+            if b"rgGames" in content or b"rgPerfectGames" in content or b"gameListRow" in content:
+                _ingest_community_page(res.text, games_map, allow_new=allow_new)
             return
         data = res.json()
-        _ingest_game_dicts(_community_games_from_payload(data), games_map)
+        _ingest_game_dicts(_community_games_from_payload(data), games_map, allow_new=allow_new)
     except Exception:
         return
 
 
-async def _merge_community_html(client: httpx.AsyncClient, url: str, games_map: dict):
-    """Parse public community games pages, including Perfect (100%) and lapsed subscriptions."""
+async def _merge_community_html(client: httpx.AsyncClient, url: str, games_map: dict, allow_new: bool = True):
+    """Parse public games lists: owned, shared, EA Play / Game Pass, and 100%s."""
     try:
         res = await client.get(url, timeout=20.0)
         if res.status_code != 200 or not res.text:
             return
-        _ingest_community_page(res.text, games_map)
+        if "gameListRow" not in res.text and "rgGames" not in res.text and "rgPerfectGames" not in res.text:
+            return
+        _ingest_community_page(res.text, games_map, allow_new=allow_new)
     except Exception:
         return
 
 
-async def _merge_community_xml(client: httpx.AsyncClient, url: str, games_map: dict):
+async def _merge_community_xml(client: httpx.AsyncClient, url: str, games_map: dict, allow_new: bool = True):
     try:
         res = await client.get(url, timeout=20.0)
         if res.status_code != 200 or not res.content:
@@ -233,6 +261,7 @@ async def _merge_community_xml(client: httpx.AsyncClient, url: str, games_map: d
                 logo_node.get_text() if logo_node else "",
                 hours,
                 icon_node.get_text() if icon_node else "",
+                allow_new=allow_new,
             )
     except Exception:
         return
@@ -240,37 +269,27 @@ async def _merge_community_xml(client: httpx.AsyncClient, url: str, games_map: d
 
 async def fetch_unified_games_list(identifier: str, steam_id: str):
     games_map = {}
+    vanity = identifier if not (identifier.isdigit() and len(identifier) == 17) else ""
+    profile_urls = [f"https://steamcommunity.com/profiles/{steam_id}"]
+    if vanity:
+        profile_urls.append(f"https://steamcommunity.com/id/{vanity}")
+    html_urls = [
+        f"{base}/games/?tab={tab}"
+        for base in profile_urls
+        for tab in ("all", "perfect", "recent")
+    ]
     json_urls = [
-        f"https://steamcommunity.com/id/{identifier}/games?tab=all&json=1",
-        f"https://steamcommunity.com/profiles/{steam_id}/games?tab=all&json=1",
-        f"https://steamcommunity.com/id/{identifier}/games?tab=perfect&json=1",
-        f"https://steamcommunity.com/profiles/{steam_id}/games?tab=perfect&json=1",
+        f"{base}/games?tab={tab}&json=1"
+        for base in profile_urls
+        for tab in ("all", "perfect")
     ]
     xml_urls = [
-        f"https://steamcommunity.com/id/{identifier}/games?tab=all&xml=1",
-        f"https://steamcommunity.com/profiles/{steam_id}/games?tab=all&xml=1",
-        f"https://steamcommunity.com/id/{identifier}/games?tab=perfect&xml=1",
-        f"https://steamcommunity.com/profiles/{steam_id}/games?tab=perfect&xml=1",
-    ]
-    html_urls = [
-        f"https://steamcommunity.com/id/{identifier}/games/?tab=all",
-        f"https://steamcommunity.com/profiles/{steam_id}/games/?tab=all",
-        f"https://steamcommunity.com/id/{identifier}/games/?tab=perfect",
-        f"https://steamcommunity.com/profiles/{steam_id}/games/?tab=perfect",
-        f"https://steamcommunity.com/id/{identifier}/games/?tab=recent",
-        f"https://steamcommunity.com/profiles/{steam_id}/games/?tab=recent",
-        f"https://steamcommunity.com/profiles/{steam_id}/",
-        f"https://steamcommunity.com/id/{identifier}/",
+        f"{base}/games?tab={tab}&xml=1"
+        for base in profile_urls
+        for tab in ("all", "perfect")
     ]
 
     async with httpx.AsyncClient(follow_redirects=True, headers=COMMUNITY_HEADERS, timeout=20.0) as client:
-        for url in json_urls:
-            await _merge_community_json(client, url, games_map)
-        for url in xml_urls:
-            await _merge_community_xml(client, url, games_map)
-        for url in html_urls:
-            await _merge_community_html(client, url, games_map)
-
         owned_url = "https://api.steampowered.com/IPlayerService/GetOwnedGames/v1/"
         owned_params = {
             "key": STEAM_API_KEY,
@@ -284,19 +303,7 @@ async def fetch_unified_games_list(identifier: str, steam_id: str):
             res = await client.get(owned_url, params=owned_params, timeout=20.0)
             if res.status_code == 200:
                 for game in res.json().get("response", {}).get("games", []):
-                    app_id = game["appid"]
-                    icon_hash = game.get("img_icon_url") or ""
-                    logo_hash = game.get("img_logo_url") or icon_hash
-                    icon = f"{COMMUNITY_CDN}/steamcommunity/public/images/apps/{app_id}/{icon_hash}.jpg" if icon_hash else ""
-                    logo = f"{COMMUNITY_CDN}/steamcommunity/public/images/apps/{app_id}/{logo_hash}.jpg" if logo_hash else ""
-                    _upsert_game(
-                        games_map,
-                        app_id,
-                        game.get("name", f"App {app_id}"),
-                        logo,
-                        round(game.get("playtime_forever", 0) / 60, 1),
-                        icon,
-                    )
+                    _upsert_api_game(games_map, game)
         except Exception:
             pass
 
@@ -309,21 +316,16 @@ async def fetch_unified_games_list(identifier: str, steam_id: str):
             )
             if res.status_code == 200:
                 for game in res.json().get("response", {}).get("games", []):
-                    app_id = game.get("appid")
-                    icon_hash = game.get("img_icon_url") or ""
-                    logo_hash = game.get("img_logo_url") or icon_hash
-                    icon = f"{COMMUNITY_CDN}/steamcommunity/public/images/apps/{app_id}/{icon_hash}.jpg" if icon_hash else ""
-                    logo = f"{COMMUNITY_CDN}/steamcommunity/public/images/apps/{app_id}/{logo_hash}.jpg" if logo_hash else ""
-                    _upsert_game(
-                        games_map,
-                        app_id,
-                        game.get("name", f"App {app_id}"),
-                        logo,
-                        round(game.get("playtime_forever", 0) / 60, 1),
-                        icon,
-                    )
+                    _upsert_api_game(games_map, game)
         except Exception:
             pass
+
+        for url in json_urls:
+            await _merge_community_json(client, url, games_map, allow_new=True)
+        for url in xml_urls:
+            await _merge_community_xml(client, url, games_map, allow_new=True)
+        for url in html_urls:
+            await _merge_community_html(client, url, games_map, allow_new=True)
 
     return list(games_map.values())
 

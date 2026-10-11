@@ -1320,6 +1320,8 @@
         let showcaseData = {};
         let scanTotalGames = 0;
         let scanDone = true;
+        let backlogAbort = null;
+        let backlogScanId = 0;
         let hiddenGames = loadHiddenGames();
 
         function loadHiddenGames() {
@@ -1905,6 +1907,14 @@
             </div>`;
         }
 
+        function upsertBacklogGame(data) {
+            const id = String(data && data.appid);
+            if (!id) return;
+            const idx = cachedBacklogData.findIndex(game => String(game.appid) === id);
+            if (idx >= 0) cachedBacklogData[idx] = data;
+            else cachedBacklogData.push(data);
+        }
+
         async function fetchBacklog() {
             const identifier = document.getElementById('steamInput').value.trim();
             const resultsDiv = document.getElementById('results');
@@ -1912,6 +1922,12 @@
             const showcaseSection = document.getElementById('showcaseSection');
             
             if (!identifier) return;
+
+            hideHoverTip();
+            if (backlogAbort) backlogAbort.abort();
+            const scanId = ++backlogScanId;
+            const controller = new AbortController();
+            backlogAbort = controller;
 
             resultsDiv.innerHTML = '';
             const heading = document.getElementById('resultsHeading');
@@ -1930,7 +1946,8 @@
             requestAnimationFrame(renderRecentAchievements);
 
             try {
-                const response = await fetch(`${API_BASE}/api/library/${identifier}`);
+                const response = await fetch(`${API_BASE}/api/library/${identifier}`, { signal: controller.signal });
+                if (scanId !== backlogScanId) return;
                 if (!response.ok) {
                     const errData = await response.json();
                     loadingDiv.classList.add('hidden');
@@ -1945,6 +1962,7 @@
 
                 while (true) {
                     const { value, done } = await reader.read();
+                    if (scanId !== backlogScanId) return;
                     if (done) break;
 
                     buffer += decoder.decode(value, { stream: true });
@@ -1952,6 +1970,7 @@
                     buffer = lines.pop();
 
                     for (const line of lines) {
+                        if (scanId !== backlogScanId) return;
                         if (line.startsWith("data: ")) {
                             const jsonStr = line.substring(6);
                             const data = JSON.parse(jsonStr);
@@ -1965,11 +1984,12 @@
                                 return;
                             }
                             if (data.type === 'init') {
+                                cachedBacklogData = [];
                                 scanTotalGames = Number(data.total) || 0;
                                 loadingDiv.innerText = `Loading 0 / ${scanTotalGames} games...`;
                                 renderFilteredGames();
                             } else if (data.type === 'game') {
-                                cachedBacklogData.push(data);
+                                upsertBacklogGame(data);
                                 refreshSteamFilterOptions();
                                 const totalLabel = scanTotalGames || cachedBacklogData.length;
                                 loadingDiv.innerText = `Loaded & Ranked ${cachedBacklogData.length} of ${totalLabel} games...`;
@@ -1988,6 +2008,7 @@
                     }
                 }
             } catch (err) {
+                if (err && (err.name === 'AbortError' || scanId !== backlogScanId)) return;
                 loadingDiv.classList.add('hidden');
                 showcaseSection.classList.add('hidden');
                 resultsDiv.innerHTML = `<p class="text-red-400 text-sm font-bold">Error streaming from backend server.</p>`;
@@ -2035,17 +2056,21 @@
             requestAnimationFrame(renderRecentAchievements);
         }
 
+        let tipShowFrame = 0;
+
         function showHoverTip(html, event) {
             const tip = document.getElementById('hoverTip');
+            if (!tip) return;
+            cancelAnimationFrame(tipShowFrame);
+            tip.removeAttribute('hidden');
             tip.innerHTML = html;
-            tip.hidden = false;
             moveHoverTip(event);
-            requestAnimationFrame(() => tip.classList.add('is-visible'));
+            tipShowFrame = requestAnimationFrame(() => tip.classList.add('is-visible'));
         }
 
         function moveHoverTip(event) {
             const tip = document.getElementById('hoverTip');
-            if (tip.hidden && !tip.classList.contains('is-visible')) return;
+            if (!tip || !event) return;
             const pad = 10;
             const offset = 16;
             let x = event.clientX + offset;
@@ -2059,6 +2084,8 @@
 
         function hideHoverTip() {
             const tip = document.getElementById('hoverTip');
+            if (!tip) return;
+            cancelAnimationFrame(tipShowFrame);
             tip.classList.remove('is-visible');
         }
 
