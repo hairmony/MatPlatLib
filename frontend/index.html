@@ -1,0 +1,2342 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MatPlatLib | Steam Backlog Classifier</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;700;800;900&display=swap" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Outfit', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        :root {
+            --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+            --ease-emphasized: cubic-bezier(0.2, 0, 0, 1);
+            --ease-enter: cubic-bezier(0.05, 0.7, 0.1, 1);
+            --ease-exit: cubic-bezier(0.3, 0, 0.8, 0.15);
+            --ease-breathe: cubic-bezier(0.45, 0.05, 0.55, 0.95);
+            --motion: 300ms;
+            --motion-short: 200ms;
+            --motion-medium: 400ms;
+            --dopamine: #2098d4;
+        }
+        @property --gradient_rotate {
+            syntax: "<angle>";
+            initial-value: 0deg;
+            inherits: true;
+        }
+        .text-dopamine {
+            color: var(--dopamine);
+        }
+        .btn-dopamine {
+            background: var(--dopamine);
+            color: #fff;
+        }
+        .btn-dopamine:hover {
+            filter: brightness(1.08);
+        }
+        body {
+            font-family: Outfit, ui-sans-serif, system-ui, sans-serif;
+            font-weight: 700;
+        }
+        .site-footer {
+            margin-top: auto;
+            padding-top: 3rem;
+        }
+        .site-footer-links {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.35rem 1.1rem;
+        }
+        .site-footer-links a {
+            color: var(--dopamine);
+            text-decoration: none;
+        }
+        .site-footer-links a:hover {
+            text-decoration: underline;
+            text-underline-offset: 3px;
+        }
+        .credit-byline {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 0.65rem 0.75rem;
+            margin-bottom: 1.25rem;
+        }
+        .credit-name {
+            font-size: 1.125rem;
+            font-weight: 800;
+            color: #fff;
+        }
+        .credit-social {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+        }
+        .credit-social a {
+            display: inline-flex;
+            width: 2.25rem;
+            height: 2.25rem;
+            align-items: center;
+            justify-content: center;
+            border-radius: 0.5rem;
+            background: rgb(17 24 39);
+            border: 1px solid rgb(55 65 81);
+            color: var(--dopamine);
+            text-decoration: none;
+        }
+        .credit-social a:hover {
+            text-decoration: none;
+            border-color: var(--dopamine);
+            transform: none;
+        }
+        .credit-social svg,
+        .credit-social img {
+            width: 1.15rem;
+            height: 1.15rem;
+            object-fit: contain;
+        }
+        button,
+        a,
+        .field-input,
+        .field-clear,
+        .game-card,
+        .achievement-tile,
+        .score-badge,
+        .nowrap-tag,
+        .stat-box {
+            transition:
+                transform var(--motion) var(--ease-emphasized),
+                box-shadow var(--motion) var(--ease-standard),
+                background-color var(--motion) var(--ease-standard),
+                background-image var(--motion) var(--ease-standard),
+                color var(--motion) var(--ease-standard),
+                border-color var(--motion) var(--ease-standard),
+                opacity var(--motion) var(--ease-standard),
+                filter var(--motion) var(--ease-standard);
+        }
+        button:hover {
+            transform: translateY(-1px);
+        }
+        button:active {
+            transform: translateY(0);
+            transition-duration: 120ms;
+        }
+        .game-card {
+            height: 100%;
+            transition:
+                transform var(--motion-medium) var(--ease-emphasized),
+                box-shadow var(--motion-medium) var(--ease-standard),
+                background-color var(--motion) var(--ease-standard),
+                border-color var(--motion) var(--ease-standard);
+        }
+        .game-card:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 16px 32px rgba(0, 0, 0, 0.38);
+        }
+        .skeleton-block {
+            background: linear-gradient(90deg, rgb(31 41 55) 25%, rgb(55 65 81) 50%, rgb(31 41 55) 75%);
+            background-size: 200% 100%;
+            animation: skeletonShimmer 1.4s linear infinite;
+            border-radius: 0.25rem;
+        }
+        @keyframes skeletonShimmer {
+            0% { background-position: 100% 0; }
+            100% { background-position: -100% 0; }
+        }
+        @media (prefers-reduced-motion: reduce) {
+            .skeleton-block {
+                animation: none;
+                background: rgb(31 41 55);
+            }
+        }
+        .achievement-tile:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 16px 32px rgba(0, 0, 0, 0.38);
+            z-index: 2;
+        }
+        .field-input {
+            background: rgb(17 24 39);
+            border: 1px solid rgb(55 65 81);
+            border-radius: 0.5rem;
+            color: #fff;
+        }
+        .field-input:focus {
+            outline: none;
+            border-color: rgb(59 130 246);
+        }
+        .field-wrap {
+            position: relative;
+            display: flex;
+            align-items: center;
+        }
+        .field-wrap .field-input {
+            width: 100%;
+            padding-right: 2.5rem;
+        }
+        .field-clear {
+            display: none;
+            position: absolute;
+            right: 0.4rem;
+            width: 1.6rem;
+            height: 1.6rem;
+            align-items: center;
+            justify-content: center;
+            padding: 0;
+            border: 0;
+            border-radius: 999px;
+            background: rgb(55 65 81);
+            color: #fff;
+            line-height: 0;
+            cursor: pointer;
+        }
+        .field-clear:hover,
+        .field-clear:active {
+            background: rgb(75 85 99);
+            color: var(--dopamine);
+            transform: none;
+        }
+        .field-wrap.has-value .field-clear {
+            display: flex;
+        }
+        .search-filter-bar .field-input {
+            padding-right: 2.9rem;
+        }
+        .search-filter-bar.has-value .field-input {
+            padding-right: 5rem;
+        }
+        .search-filter-bar.has-value .field-clear {
+            right: 2.55rem;
+        }
+        .field-filter {
+            position: absolute;
+            right: 0.4rem;
+            left: auto;
+            z-index: 2;
+            display: flex;
+            width: 1.9rem;
+            height: 1.9rem;
+            align-items: center;
+            justify-content: center;
+            padding: 0;
+            border: 0;
+            background: transparent;
+            color: rgb(156 163 175);
+            cursor: pointer;
+        }
+        .field-filter:hover,
+        .field-filter:active,
+        .search-filter-shell.is-open .field-filter {
+            color: var(--dopamine);
+            transform: none;
+        }
+        .heroicon-sprite {
+            position: absolute;
+            width: 0;
+            height: 0;
+            overflow: hidden;
+        }
+        .hi {
+            width: 1.05rem;
+            height: 1.05rem;
+            flex-shrink: 0;
+            display: block;
+            fill: none;
+            stroke: currentColor;
+        }
+        .field-filter svg {
+            width: 1.35rem;
+            height: 1.35rem;
+            fill: none;
+            stroke: currentColor;
+        }
+        .field-clear svg {
+            width: 0.92rem;
+            height: 0.92rem;
+            display: block;
+            fill: none;
+            stroke: currentColor;
+            transform: translateY(0.5px);
+        }
+        .btn-icon {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.35rem;
+        }
+        .search-filter-shell .filter-panel {
+            overflow: hidden;
+        }
+        .search-filter-shell:not(.is-open) .filter-panel {
+            border: 0;
+            box-shadow: none;
+            background: transparent;
+        }
+        .search-filter-shell.is-open .search-filter-bar .field-input {
+            border-bottom-left-radius: 0;
+            border-bottom-right-radius: 0;
+            border-bottom-color: rgb(55 65 81);
+        }
+        .search-filter-shell.is-open .filter-panel {
+            border-top-left-radius: 0;
+            border-top-right-radius: 0;
+            border-top-width: 0;
+        }
+        .search-filter-shell.is-open .filter-panel-body {
+            padding-top: 1rem;
+        }
+        .filter-group {
+            max-height: 9.5rem;
+            overflow-y: auto;
+            background: rgb(17 24 39);
+            border: 1px solid rgb(55 65 81);
+            border-radius: 0.375rem;
+            padding: 0.4rem 0.55rem;
+        }
+        .filter-check {
+            display: flex;
+            align-items: center;
+            gap: 0.45rem;
+            font-size: 0.875rem;
+            font-weight: 700;
+            color: rgb(209 213 219);
+            padding: 0.15rem 0;
+            cursor: pointer;
+        }
+        .filter-check input {
+            accent-color: rgb(59 130 246);
+        }
+        .sort-dir-toggle {
+            display: flex;
+            width: 100%;
+            margin-top: 0.25rem;
+            overflow: hidden;
+            border: 1px solid rgb(55 65 81);
+            border-radius: 0.5rem;
+            background: rgb(17 24 39);
+        }
+        .sort-dir-toggle button {
+            flex: 1;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.35rem;
+            margin: 0;
+            border: 0;
+            border-radius: 0;
+            padding: 0.4rem 0.55rem;
+            background: transparent;
+            color: rgb(209 213 219);
+            font-size: 0.875rem;
+            font-weight: 700;
+            cursor: pointer;
+            transition:
+                background-color var(--motion-short) var(--ease-standard),
+                color var(--motion-short) var(--ease-standard);
+        }
+        .sort-dir-toggle button + button {
+            border-left: 1px solid rgb(55 65 81);
+        }
+        .sort-dir-toggle button.is-active {
+            background: rgb(32 152 212 / 0.22);
+            color: var(--dopamine);
+        }
+        .sort-dir-toggle button:hover,
+        .sort-dir-toggle button:active {
+            transform: none;
+        }
+        .range-filter-head {
+            display: flex;
+            align-items: baseline;
+            justify-content: space-between;
+            gap: 0.5rem;
+            margin-bottom: 0.35rem;
+        }
+        .range-filter-value {
+            font-size: 0.75rem;
+            font-weight: 700;
+            letter-spacing: 0.04em;
+            color: #fff;
+            white-space: nowrap;
+        }
+        .range-filter {
+            padding-inline: 0.15rem;
+        }
+        .range-track {
+            position: relative;
+            height: 1.75rem;
+            margin-inline: 0.7rem;
+            overflow: visible;
+        }
+        .range-track-line,
+        .range-fill {
+            position: absolute;
+            left: 8px;
+            right: 8px;
+            top: 50%;
+            height: 4px;
+            border-radius: 999px;
+            transform: translateY(-50%);
+            pointer-events: none;
+        }
+        .range-track-line {
+            background: rgb(55 65 81);
+        }
+        .range-fill {
+            background: var(--dopamine);
+        }
+        .range-track input[type="range"] {
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 1.75rem;
+            margin: 0;
+            background: transparent;
+            pointer-events: none;
+            appearance: none;
+            -webkit-appearance: none;
+            overflow: visible;
+        }
+        .range-track input[type="range"]::-webkit-slider-runnable-track {
+            height: 4px;
+            background: transparent;
+        }
+        .range-track input[type="range"]::-moz-range-track {
+            height: 4px;
+            background: transparent;
+        }
+        .range-track input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            pointer-events: auto;
+            width: 16px;
+            height: 16px;
+            margin-top: -6px;
+            border: 0;
+            border-radius: 999px;
+            background: var(--dopamine);
+            box-shadow: 0 0 0 3px rgba(32, 152, 212, 0.28);
+            cursor: pointer;
+        }
+        .range-track input[type="range"]::-moz-range-thumb {
+            pointer-events: auto;
+            width: 16px;
+            height: 16px;
+            border: 0;
+            border-radius: 999px;
+            background: var(--dopamine);
+            box-shadow: 0 0 0 3px rgba(32, 152, 212, 0.28);
+            cursor: pointer;
+        }
+        .source-tag {
+            font-size: 0.75rem;
+            font-weight: 400;
+            line-height: 1.2;
+            color: #fff;
+            min-height: 0.9rem;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            padding-inline: 0.1rem;
+        }
+        .achievement-tile {
+            flex-shrink: 0;
+            aspect-ratio: 1;
+            position: relative;
+            border-radius: 0.25rem;
+            transition:
+                transform var(--motion-medium) var(--ease-emphasized),
+                box-shadow var(--motion-medium) var(--ease-standard);
+        }
+        .letter-fallback {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 800;
+            color: #f3f4f6;
+            line-height: 1;
+        }
+        .letter-fallback-tile {
+            font-size: 0.6em;
+        }
+        .letter-fallback-banner {
+            font-size: 5.5rem;
+        }
+        .stat-grid {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+            grid-template-rows: 1fr 1fr;
+            gap: 0.5rem;
+            padding: 2px;
+            align-items: stretch;
+            overflow: visible;
+        }
+        .stat-box {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            gap: 0.1rem;
+            border-radius: 0.5rem;
+            padding: 0.55rem 0.95rem 0.5rem;
+            min-width: 0;
+            min-height: 4.75rem;
+            height: 100%;
+            overflow: hidden;
+            box-sizing: border-box;
+            background: rgba(8, 16, 28, 0.32);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.16);
+        }
+        .stat-box.almost-done-glow {
+            position: relative;
+            overflow: visible;
+            z-index: 2;
+        }
+        .stat-box.almost-done-glow::after {
+            content: '';
+            position: absolute;
+            inset: -2px;
+            border-radius: inherit;
+            pointer-events: none;
+            box-shadow:
+                0 0 0 1px rgba(255, 226, 140, 0.35),
+                0 0 10px 3px rgba(255, 214, 90, 0.42);
+            opacity: 0.55;
+            animation: almostDoneBreathe 2.1s var(--ease-breathe) infinite;
+            animation-delay: inherit;
+        }
+        @keyframes almostDoneBreathe {
+            0%, 100% { opacity: 0.22; }
+            50% { opacity: 1; }
+        }
+        @keyframes almostDoneGlowPulse {
+            0%, 100% {
+                box-shadow:
+                    0 0 0 1px rgba(255, 226, 140, 0.2),
+                    0 0 7px 2px rgba(255, 214, 90, 0.26);
+            }
+            50% {
+                box-shadow:
+                    0 0 0 1px rgba(255, 226, 140, 0.72),
+                    0 0 18px 6px rgba(255, 214, 90, 0.78);
+            }
+        }
+        @media (prefers-reduced-motion: reduce) {
+            .stat-box.almost-done-glow::after {
+                animation: none;
+                opacity: 0.5;
+            }
+            .stat-box.metal-gold.almost-done-glow {
+                animation: none;
+            }
+            button:hover,
+            .game-card:hover,
+            .achievement-tile:hover {
+                transform: none;
+            }
+        }
+        .stat-box .ui-label {
+            line-height: 1.2;
+            font-size: 0.75rem;
+            color: #fff;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            padding-inline: 0.1rem;
+        }
+        .stat-box.metal-gold .ui-label,
+        .stat-box.metal-gold .ui-value,
+        .stat-box.metal-gold .source-tag {
+            color: #1a1200;
+        }
+        .stat-box.metal-silver .ui-label,
+        .stat-box.metal-silver .ui-value,
+        .stat-box.metal-silver .source-tag {
+            color: #1f2937;
+        }
+        .stat-box.metal-platinum .ui-label,
+        .stat-box.metal-platinum .ui-value,
+        .stat-box.metal-platinum .source-tag {
+            color: #16384a;
+        }
+        .score-badge .ui-label {
+            line-height: 1;
+            font-size: 0.75rem;
+            color: inherit;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .score-badge .ui-value {
+            color: inherit;
+            line-height: 1;
+            margin-top: 0.05rem;
+        }
+        .score-badge {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            gap: 0.05rem;
+            padding: 0.5rem 0.9rem;
+            background: rgba(8, 16, 28, 0.32);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            color: var(--dopamine);
+            border: 1px solid rgba(32, 152, 212, 0.28);
+        }
+        .nowrap-tag {
+            color: #fff;
+            white-space: nowrap;
+        }
+        .tag-hidden {
+            background: rgba(239, 68, 68, 0.2);
+            color: #fca5a5;
+        }
+        .tag-played {
+            background-color: #38964f;
+        }
+        .tag-started {
+            background-color: #0d53de;
+        }
+        .tag-halfway {
+            background-color: #7d29f2;
+        }
+        .tag-unplayed,
+        .tag-none {
+            background-color: #5f6b78;
+        }
+        .stat-box.metal-gold,
+        .stat-box.metal-silver,
+        .stat-box.metal-platinum {
+            --border_width: 2px;
+            --metal_01: rgb(200 200 220 / 1);
+            --metal_02: rgb(160 160 180 / 1);
+            --metal_03: rgb(120 120 140 / 1);
+            --metal_04: rgb(80 80 100 / 1);
+            --metal_05: rgb(40 40 60 / 1);
+            --metal_06: rgb(10 10 10 / 1);
+            position: relative;
+            isolation: isolate;
+            overflow: hidden;
+            border: var(--border_width) solid transparent;
+            background:
+                linear-gradient(145deg, var(--metal-fill-a), var(--metal-fill-b)) padding-box,
+                conic-gradient(
+                    from var(--gradient_rotate),
+                    rgb(from var(--metal_01) r g b / 0.9),
+                    rgb(from var(--metal_01) r g b / 0.15),
+                    rgb(from var(--metal_06) r g b / 0.2),
+                    rgb(from var(--metal_06) r g b / 1),
+                    rgb(from var(--metal_04) r g b / 0.75),
+                    rgb(from var(--metal_04) r g b / 0.1),
+                    rgb(from var(--metal_04) r g b / 1),
+                    rgb(from var(--metal_01) r g b / 0.9)
+                ) border-box;
+            box-shadow: none;
+        }
+        .stat-box.metal-gold::before,
+        .stat-box.metal-silver::before,
+        .stat-box.metal-platinum::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            z-index: 0;
+            pointer-events: none;
+            border-radius: inherit;
+            opacity: 0.78;
+            mix-blend-mode: overlay;
+            background: conic-gradient(
+                from calc(-1 * var(--gradient_rotate)),
+                rgb(from var(--metal_03) r g b / 1),
+                rgb(from var(--metal_01) r g b / 1),
+                rgb(from var(--metal_01) r g b / 1),
+                rgb(from var(--metal_06) r g b / 1),
+                rgb(from var(--metal_02) r g b / 1),
+                rgb(from var(--metal_05) r g b / 1),
+                rgb(from var(--metal_04) r g b / 1),
+                rgb(from var(--metal_03) r g b / 1)
+            );
+        }
+        .stat-box.metal-gold > *,
+        .stat-box.metal-silver > *,
+        .stat-box.metal-platinum > * {
+            position: relative;
+            z-index: 1;
+        }
+        .stat-box.metal-silver {
+            --metal_01: rgb(255 255 255 / 1);
+            --metal_02: rgb(236 236 236 / 1);
+            --metal_03: rgb(200 200 200 / 1);
+            --metal_04: rgb(120 120 120 / 1);
+            --metal_05: rgb(55 55 55 / 1);
+            --metal_06: rgb(12 12 12 / 1);
+            --metal-fill-a: #f4f4f4;
+            --metal-fill-b: #8e8e8e;
+        }
+        .stat-box.metal-gold {
+            --metal_01: rgb(255 248 214 / 1);
+            --metal_02: rgb(240 205 90 / 1);
+            --metal_03: rgb(211 175 55 / 1);
+            --metal_04: rgb(130 90 12 / 1);
+            --metal_05: rgb(70 45 6 / 1);
+            --metal_06: rgb(18 10 0 / 1);
+            --metal-fill-a: #f3d56a;
+            --metal-fill-b: #8a6a10;
+        }
+        .stat-box.metal-platinum {
+            --metal_01: rgb(255 255 255 / 1);
+            --metal_02: rgb(220 244 255 / 1);
+            --metal_03: rgb(168 222 255 / 1);
+            --metal_04: rgb(80 150 190 / 1);
+            --metal_05: rgb(35 85 120 / 1);
+            --metal_06: rgb(8 28 42 / 1);
+            --metal-fill-a: #ecf8ff;
+            --metal-fill-b: #5aa3c8;
+        }
+        .stat-box.metal-gold.almost-done-glow {
+            overflow: visible;
+            z-index: 3;
+            animation: almostDoneGlowPulse 2.1s var(--ease-breathe) infinite;
+        }
+        .stat-box .ui-value {
+            font-size: 1.5rem;
+            line-height: 1.25;
+            color: #fff;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            padding-inline: 0.1rem;
+        }
+        .link-playstation {
+            color: #0070cc;
+        }
+        .link-playstation:hover {
+            color: #3399e6;
+        }
+        .link-steam {
+            color: #66c0f4;
+        }
+        .link-steam:hover {
+            color: #9ad3f7;
+        }
+        .ui-label {
+            font-size: 0.75rem;
+            font-weight: 700;
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+            color: rgb(156 163 175);
+        }
+        .panel-title,
+        .rank-number,
+        .game-title {
+            text-shadow: 0 2px 6px rgba(0, 0, 0, 0.85);
+        }
+        .rank-number {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: 0.12rem 0.5rem;
+            line-height: 1;
+            color: #fff;
+        }
+        .panel-title {
+            font-size: 1.125rem;
+            font-weight: 800;
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+            line-height: 1.2;
+            color: var(--dopamine);
+        }
+        .results-toolbar {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 0.75rem;
+            margin-bottom: 0.75rem;
+        }
+        .results-toolbar .panel-title {
+            margin: 0;
+            min-height: 2.35rem;
+            display: flex;
+            align-items: center;
+            line-height: 1;
+        }
+        .hidden-menu-shell {
+            display: flex;
+            flex-direction: column;
+            align-items: stretch;
+            flex-shrink: 0;
+            width: 15.75rem;
+        }
+        .hidden-menu-toggle {
+            width: 100%;
+            position: relative;
+            z-index: 1;
+            padding-left: 1.05rem;
+            padding-right: 1.05rem;
+            border-radius: 0.5rem;
+            background: rgb(17 24 39);
+            border: 1px solid rgb(55 65 81);
+            transition:
+                border-radius var(--motion) var(--ease-emphasized),
+                border-color var(--motion) var(--ease-standard),
+                background-color var(--motion) var(--ease-standard),
+                color var(--motion) var(--ease-standard);
+        }
+        .hidden-menu-toggle:hover,
+        .hidden-menu-toggle:active {
+            transform: none;
+        }
+        .hidden-menu-shell.is-open .hidden-menu-toggle {
+            border-bottom-left-radius: 0;
+            border-bottom-right-radius: 0;
+            border-bottom-color: rgb(55 65 81);
+        }
+        .hidden-menu-panel {
+            display: grid;
+            grid-template-rows: 0fr;
+            margin: 0;
+            width: 100%;
+            box-sizing: border-box;
+            padding: 0 0.45rem;
+            background: rgb(31 41 55 / 0.9);
+            border: 1px solid rgb(55 65 81);
+            border-top-width: 0;
+            border-radius: 0 0 0.5rem 0.5rem;
+            overflow: hidden;
+            opacity: 0;
+            pointer-events: none;
+            transition:
+                grid-template-rows var(--motion-medium) var(--ease-emphasized),
+                opacity var(--motion-short) var(--ease-standard),
+                padding var(--motion-medium) var(--ease-emphasized);
+        }
+        .hidden-menu-inner {
+            min-height: 0;
+            overflow: hidden;
+        }
+        .hidden-menu-row {
+            display: flex;
+            align-items: center;
+            gap: 0.4rem;
+            min-width: 0;
+            padding: 0.3rem 0.2rem;
+            border-radius: 0.375rem;
+            transition: background-color var(--motion-short) var(--ease-standard);
+        }
+        .hidden-menu-row:hover {
+            background: rgb(31 41 55);
+        }
+        .hidden-menu-panel .game-title {
+            font-size: 0.875rem;
+        }
+        .hidden-menu-shell.is-open .hidden-menu-panel {
+            grid-template-rows: 1fr;
+            padding-top: 0.4rem;
+            padding-bottom: 0.5rem;
+            opacity: 1;
+            pointer-events: auto;
+        }
+        .score-badge .infinity-mark {
+            display: inline-block;
+            font-size: 1.45em;
+            line-height: 0.8;
+            font-weight: 800;
+            transform: translateY(0.06em);
+        }
+        .ui-value {
+            font-size: 1.5rem;
+            font-weight: 800;
+            line-height: 1.1;
+            font-variant-numeric: tabular-nums;
+        }
+        .game-title-wrap {
+            min-width: 0;
+            flex: 1 1 0;
+            overflow: hidden;
+        }
+        .game-title {
+            display: inline-block;
+            max-width: none;
+            font-size: 1.125rem;
+            font-weight: 800;
+            line-height: 1.2;
+            color: #fff;
+            white-space: nowrap;
+        }
+        .game-title.is-marquee {
+            animation-name: titleMarquee;
+            animation-timing-function: cubic-bezier(0.45, 0.05, 0.55, 0.95);
+            animation-iteration-count: infinite;
+            animation-direction: alternate;
+        }
+        @keyframes titleMarquee {
+            0%, 10% { transform: translateX(0); }
+            90%, 100% { transform: translateX(var(--marquee-x, 0)); }
+        }
+        @media (prefers-reduced-motion: reduce) {
+            .game-title.is-marquee {
+                animation: none;
+                display: block;
+                width: 100%;
+                overflow: hidden;
+                text-overflow: ellipsis;
+            }
+        }
+        .game-card-head {
+            min-height: 4.25rem;
+            border-top-left-radius: 0.5rem;
+            border-top-right-radius: 0.5rem;
+            overflow: hidden;
+        }
+        .game-card-art {
+            position: relative;
+            width: calc(100% + 2px);
+            margin-left: -1px;
+            aspect-ratio: 460 / 215;
+            overflow: hidden;
+            background: #374151;
+            flex-shrink: 0;
+        }
+        .game-card-art img {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            object-position: center;
+            display: block;
+        }
+        .game-title-row {
+            min-height: 2.85rem;
+            padding: 0.65rem 0.35rem;
+            margin: -0.45rem -0.35rem 0.1rem;
+            position: relative;
+            z-index: 20;
+        }
+        .game-card .game-title-wrap {
+            align-self: stretch;
+            display: flex;
+            align-items: center;
+        }
+        .hover-tip {
+            position: fixed;
+            z-index: 9999;
+            max-width: 18rem;
+            padding: 0.55rem 0.7rem;
+            background: #030712;
+            color: #e5e7eb;
+            font-size: 0.875rem;
+            font-weight: 700;
+            line-height: 1.3;
+            border: 1px solid rgb(55 65 81);
+            border-radius: 0.375rem;
+            box-shadow: 0 12px 24px rgba(0, 0, 0, 0.5);
+            pointer-events: none;
+            opacity: 0;
+            transform: translateY(6px);
+            visibility: hidden;
+            transition:
+                opacity var(--motion-short) var(--ease-standard),
+                transform var(--motion) var(--ease-emphasized),
+                visibility var(--motion-short) var(--ease-standard);
+        }
+        .hover-tip.is-visible {
+            opacity: 1;
+            transform: translateY(0);
+            visibility: visible;
+        }
+        .recent-achievements-row {
+            display: flex;
+            flex-wrap: nowrap;
+            width: 100%;
+            gap: 4px;
+            overflow: visible;
+            padding: 6px 0 20px;
+            margin: -6px 0 -20px;
+            box-sizing: border-box;
+        }
+        .achievement-tile.skeleton-tile {
+            pointer-events: none;
+            background: rgb(17 24 39);
+            border: 1px solid rgb(55 65 81);
+        }
+        .filter-panel {
+            padding: 0;
+        }
+        .filter-panel-toggle {
+            display: flex;
+            width: 100%;
+            align-items: flex-end;
+            justify-content: space-between;
+            gap: 0.75rem;
+            background: transparent;
+            border: 0;
+            padding: 1.15rem 1rem 0.75rem;
+            min-height: 3.5rem;
+            cursor: pointer;
+            color: inherit;
+        }
+        @media (min-width: 640px) {
+            .filter-panel-toggle {
+                padding: 1.25rem 1.25rem 0.75rem;
+                min-height: 3.75rem;
+            }
+        }
+        .filter-panel.is-collapsed .filter-panel-toggle {
+            padding-bottom: 1.15rem;
+        }
+        @media (min-width: 640px) {
+            .filter-panel.is-collapsed .filter-panel-toggle {
+                padding-bottom: 1.25rem;
+            }
+        }
+        .filter-panel-toggle:hover,
+        .filter-panel-toggle:active {
+            transform: none;
+        }
+        .filter-panel-arrow {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+            width: 1.35rem;
+            height: 1.35rem;
+            color: var(--dopamine);
+            font-size: 0.7rem;
+            line-height: 1;
+            font-weight: 800;
+            text-shadow: 0 2px 6px rgba(0, 0, 0, 0.85);
+            transform-origin: center;
+            transition: transform var(--motion) var(--ease-emphasized);
+        }
+        .filter-panel.is-collapsed .filter-panel-arrow {
+            transform: rotate(-90deg);
+        }
+        .filter-panel-body {
+            display: grid;
+            grid-template-rows: 1fr;
+            margin-top: 0;
+            padding: 0 1rem 1rem;
+            opacity: 1;
+            transition:
+                grid-template-rows var(--motion-medium) var(--ease-emphasized),
+                opacity var(--motion-short) var(--ease-standard),
+                padding var(--motion-medium) var(--ease-emphasized);
+        }
+        @media (min-width: 640px) {
+            .filter-panel-body {
+                padding: 0 1.25rem 1.25rem;
+            }
+        }
+        .filter-panel-inner {
+            overflow: hidden;
+            min-height: 0;
+        }
+        .filter-panel:not(.is-collapsed) .filter-panel-inner {
+            overflow: visible;
+        }
+        .filter-panel.is-collapsed .filter-panel-body {
+            grid-template-rows: 0fr;
+            opacity: 0;
+            padding-top: 0;
+            padding-bottom: 0;
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body class="bg-gray-900 text-white font-sans font-bold min-h-screen flex flex-col p-4 sm:p-8">
+    <svg class="heroicon-sprite" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false">
+        <symbol id="hi-adjustments-horizontal" viewBox="0 0 24 24" fill="none">
+            <path d="M10.5 6L20.25 6M10.5 6C10.5 6.82843 9.82843 7.5 9 7.5C8.17157 7.5 7.5 6.82843 7.5 6M10.5 6C10.5 5.17157 9.82843 4.5 9 4.5C8.17157 4.5 7.5 5.17157 7.5 6M3.75 6H7.5M10.5 18H20.25M10.5 18C10.5 18.8284 9.82843 19.5 9 19.5C8.17157 19.5 7.5 18.8284 7.5 18M10.5 18C10.5 17.1716 9.82843 16.5 9 16.5C8.17157 16.5 7.5 17.1716 7.5 18M3.75 18L7.5 18M16.5 12L20.25 12M16.5 12C16.5 12.8284 15.8284 13.5 15 13.5C14.1716 13.5 13.5 12.8284 13.5 12M16.5 12C16.5 11.1716 15.8284 10.5 15 10.5C14.1716 10.5 13.5 11.1716 13.5 12M3.75 12H13.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </symbol>
+        <symbol id="hi-x-mark" viewBox="0 0 24 24" fill="none">
+            <path d="M6 18L18 6M6 6L18 18" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </symbol>
+        <symbol id="hi-bars-arrow-down" viewBox="0 0 24 24" fill="none">
+            <path d="M3 4.5H17.25M3 9H12.75M3 13.5H12.75M17.25 9V21M17.25 21L13.5 17.25M17.25 21L21 17.25" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </symbol>
+        <symbol id="hi-bars-arrow-up" viewBox="0 0 24 24" fill="none">
+            <path d="M3 4.5H17.25M3 9H12.75M3 13.5H8.25M13.5 12.75L17.25 9M17.25 9L21 12.75M17.25 9V21" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </symbol>
+        <symbol id="hi-eye" viewBox="0 0 24 24" fill="none">
+            <path d="M2.03555 12.3224C1.96647 12.1151 1.9664 11.8907 2.03536 11.6834C3.42372 7.50972 7.36079 4.5 12.0008 4.5C16.6387 4.5 20.5742 7.50692 21.9643 11.6776C22.0334 11.8849 22.0335 12.1093 21.9645 12.3166C20.5761 16.4903 16.6391 19.5 11.9991 19.5C7.36119 19.5 3.42564 16.4931 2.03555 12.3224Z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M15 12C15 13.6569 13.6569 15 12 15C10.3431 15 9 13.6569 9 12C9 10.3431 10.3431 9 12 9C13.6569 9 15 10.3431 15 12Z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </symbol>
+        <symbol id="hi-eye-slash" viewBox="0 0 24 24" fill="none">
+            <path d="M3.97993 8.22257C3.05683 9.31382 2.35242 10.596 1.93436 12.0015C3.22565 16.338 7.24311 19.5 11.9991 19.5C12.9917 19.5 13.9521 19.3623 14.8623 19.1049M6.22763 6.22763C7.88389 5.13558 9.86771 4.5 12 4.5C16.756 4.5 20.7734 7.66205 22.0647 11.9985C21.3528 14.3919 19.8106 16.4277 17.772 17.772M6.22763 6.22763L3 3M6.22763 6.22763L9.87868 9.87868M17.772 17.772L21 21M17.772 17.772L14.1213 14.1213M14.1213 14.1213C14.6642 13.5784 15 12.8284 15 12C15 10.3431 13.6569 9 12 9C11.1716 9 10.4216 9.33579 9.87868 9.87868M14.1213 14.1213L9.87868 9.87868" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </symbol>
+        <symbol id="hi-trash" viewBox="0 0 24 24" fill="none">
+            <path d="M14.7404 9L14.3942 18M9.60577 18L9.25962 9M19.2276 5.79057C19.5696 5.84221 19.9104 5.89747 20.25 5.95629M19.2276 5.79057L18.1598 19.6726C18.0696 20.8448 17.0921 21.75 15.9164 21.75H8.08357C6.90786 21.75 5.93037 20.8448 5.8402 19.6726L4.77235 5.79057M19.2276 5.79057C18.0812 5.61744 16.9215 5.48485 15.75 5.39432M3.75 5.95629C4.08957 5.89747 4.43037 5.84221 4.77235 5.79057M4.77235 5.79057C5.91878 5.61744 7.07849 5.48485 8.25 5.39432M15.75 5.39432V4.47819C15.75 3.29882 14.8393 2.31423 13.6606 2.27652C13.1092 2.25889 12.5556 2.25 12 2.25C11.4444 2.25 10.8908 2.25889 10.3394 2.27652C9.16065 2.31423 8.25 3.29882 8.25 4.47819V5.39432M15.75 5.39432C14.5126 5.2987 13.262 5.25 12 5.25C10.738 5.25 9.48744 5.2987 8.25 5.39432" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </symbol>
+    </svg>
+    <div class="max-w-6xl mx-auto w-full flex-1 flex flex-col">
+        <h1 id="siteHeading" class="text-3xl sm:text-4xl font-extrabold mb-2 leading-tight"></h1>
+        <p class="hidden text-sm text-gray-400 mb-6">Mathematically optimize playing video games</p>
+        
+        <div class="mb-8 space-y-4">
+        <form class="flex flex-col sm:flex-row gap-2" onsubmit="event.preventDefault(); fetchBacklog();">
+            <div class="field-wrap flex-1">
+                <input type="text" id="steamInput" placeholder="Enter Steam Name or 17-digit ID..."
+                       class="field-input rounded-lg px-4 py-2.5 text-sm font-bold">
+                <button type="button" class="field-clear" data-clear="steamInput" aria-label="Clear">
+                    <svg class="hi" aria-hidden="true"><use href="#hi-x-mark"></use></svg>
+                </button>
+            </div>
+            <button type="submit" class="btn-dopamine px-6 py-2.5 rounded font-extrabold text-sm">
+                Rank Backlog
+            </button>
+        </form>
+
+        <div id="showcaseSection" class="hidden">
+            <div class="bg-gray-800/90 border border-gray-700 rounded-lg p-4 sm:p-5 shadow-xl">
+                <h2 class="panel-title mb-3">Account Statistics</h2>
+                <div id="accountStatsGrid" class="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4 w-full">
+                    <div class="bg-gray-900/60 p-3 rounded border border-gray-700/50">
+                        <div class="ui-label">Platinumed games</div>
+                        <div id="statPlatinums" class="ui-value text-white">0</div>
+                    </div>
+                    <div class="bg-gray-900/60 p-3 rounded border border-gray-700/50" title="1.00 = you matched or beat the estimated platinum time. Lower = you took longer.">
+                        <div class="ui-label">Pace</div>
+                        <div id="statPace" class="ui-value text-white">—</div>
+                    </div>
+                    <div class="bg-gray-900/60 p-3 rounded border border-gray-700/50">
+                        <div class="ui-label">Avg. Completion</div>
+                        <div id="statAvgCompletion" class="ui-value text-white">—</div>
+                    </div>
+                </div>
+                <h3 class="panel-title mt-4 mb-2">Recent Activity</h3>
+                <div id="recentAchievementsContainer" class="recent-achievements-row w-full"></div>
+            </div>
+        </div>
+        </div>
+
+        <div class="mb-3">
+        <div class="search-filter-shell">
+        <div class="field-wrap search-filter-bar">
+            <button type="button" id="searchFilterToggle" class="field-filter" onclick="toggleFilterPanel(this)" aria-expanded="false" aria-label="Filters" title="Filters">
+                <svg class="hi" aria-hidden="true"><use href="#hi-adjustments-horizontal"></use></svg>
+            </button>
+            <input type="text" id="nameFilterInput" oninput="renderFilteredGames()" placeholder="Search Backlog..." aria-label="Search Backlog" class="field-input rounded-lg px-4 py-2.5 text-sm font-bold">
+            <button type="button" class="field-clear" data-clear="nameFilterInput" aria-label="Clear search">
+                <svg class="hi" aria-hidden="true"><use href="#hi-x-mark"></use></svg>
+            </button>
+        </div>
+        <div class="filter-panel bg-gray-800/90 border border-gray-700 rounded-lg shadow-xl is-collapsed" data-filter-panel="filters">
+            <div class="filter-panel-body">
+            <div class="filter-panel-inner">
+            <h3 class="panel-title mb-3">Filters</h3>
+            <div class="space-y-3">
+            <div class="flex flex-col sm:flex-row sm:flex-wrap gap-2 sm:gap-4 sm:items-start">
+                    <label class="flex items-center gap-2 cursor-pointer text-sm font-bold text-gray-300">
+                        <input type="checkbox" id="showCompletedToggle" onchange="renderFilteredGames()" class="rounded bg-gray-900 border-gray-700 text-blue-600 focus:ring-0">
+                        Show Platinumed Games
+                    </label>
+                    <label class="flex items-center gap-2 cursor-pointer text-sm font-bold text-gray-300">
+                        <input type="checkbox" id="showNoAchievementsToggle" onchange="renderFilteredGames()" class="rounded bg-gray-900 border-gray-700 text-blue-600 focus:ring-0">
+                        Show Games Without Achievements
+                    </label>
+                    <label class="flex items-center gap-2 cursor-pointer text-sm font-bold text-gray-300">
+                        <input type="checkbox" id="showFreeToggle" onchange="renderFilteredGames()" checked class="rounded bg-gray-900 border-gray-700 text-blue-600 focus:ring-0">
+                        Show Free Games
+                    </label>
+                    <label class="flex items-center gap-2 cursor-pointer text-sm font-bold text-gray-300">
+                        <input type="checkbox" id="showHiddenToggle" onchange="renderFilteredGames()" class="rounded bg-gray-900 border-gray-700 text-blue-600 focus:ring-0">
+                        Show Hidden Games
+                    </label>
+            </div>
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                <div>
+                    <div class="ui-label mb-1">Genre</div>
+                    <div id="genreFilter" class="filter-group"></div>
+                </div>
+                <div>
+                    <div class="ui-label mb-1">Features</div>
+                    <div id="featureFilter" class="filter-group"></div>
+                </div>
+                <div>
+                    <div class="ui-label mb-1">Players</div>
+                    <div id="playersFilter" class="filter-group"></div>
+                </div>
+                <div>
+                    <div class="ui-label mb-1">Hardware</div>
+                    <div id="hardwareFilter" class="filter-group"></div>
+                </div>
+            </div>
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                <div class="range-filter" id="completionRange" data-min="0" data-max="100" data-unit="%">
+                    <div class="range-filter-head">
+                        <div class="ui-label">Completion</div>
+                        <div class="range-filter-value">0–100%</div>
+                    </div>
+                    <div class="range-track">
+                        <div class="range-track-line"></div>
+                        <div class="range-fill"></div>
+                        <input type="range" class="range-min" min="0" max="100" value="0" step="1" aria-label="Minimum completion">
+                        <input type="range" class="range-max" min="0" max="100" value="100" step="1" aria-label="Maximum completion">
+                    </div>
+                </div>
+                <div class="range-filter" id="estHoursRange" data-min="0" data-max="100" data-unit="h" data-open-max="1">
+                    <div class="range-filter-head">
+                        <div class="ui-label">Total plat. time</div>
+                        <div class="range-filter-value">0–100h+</div>
+                    </div>
+                    <div class="range-track">
+                        <div class="range-track-line"></div>
+                        <div class="range-fill"></div>
+                        <input type="range" class="range-min" min="0" max="100" value="0" step="1" aria-label="Minimum total platinum time">
+                        <input type="range" class="range-max" min="0" max="100" value="100" step="1" aria-label="Maximum total platinum time">
+                    </div>
+                </div>
+                <div class="range-filter" id="remainingHoursRange" data-min="0" data-max="80" data-unit="h" data-open-max="1">
+                    <div class="range-filter-head">
+                        <div class="ui-label">Plat. time left</div>
+                        <div class="range-filter-value">0–80h+</div>
+                    </div>
+                    <div class="range-track">
+                        <div class="range-track-line"></div>
+                        <div class="range-fill"></div>
+                        <input type="range" class="range-min" min="0" max="80" value="0" step="1" aria-label="Minimum platinum time left">
+                        <input type="range" class="range-max" min="0" max="80" value="80" step="1" aria-label="Maximum platinum time left">
+                    </div>
+                </div>
+            </div>
+            </div>
+            <h3 class="panel-title mt-4 mb-3">Sorting</h3>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <label class="ui-label">Sort by
+                    <select id="sortBy" onchange="renderFilteredGames()" class="mt-1 w-full bg-gray-900 border border-gray-700 rounded px-3 py-1.5 text-sm font-bold text-white">
+                        <option value="score">Dopamine Index</option>
+                        <option value="hours_remaining">Plat. time left</option>
+                        <option value="est_hours">Total plat. time</option>
+                        <option value="percentage">Completion</option>
+                        <option value="remaining">Achievements remaining</option>
+                        <option value="playtime">Playtime</option>
+                        <option value="name">Name</option>
+                    </select>
+                </label>
+                <div>
+                    <div class="ui-label">Order</div>
+                    <input type="hidden" id="sortDir" value="desc">
+                    <div class="sort-dir-toggle" role="group" aria-label="Order">
+                        <button type="button" data-sort-dir="asc" onclick="setSortDir('asc')" aria-pressed="false">
+                            <svg class="hi" aria-hidden="true"><use href="#hi-bars-arrow-up"></use></svg>
+                            Ascending
+                        </button>
+                        <button type="button" data-sort-dir="desc" class="is-active" onclick="setSortDir('desc')" aria-pressed="true">
+                            <svg class="hi" aria-hidden="true"><use href="#hi-bars-arrow-down"></use></svg>
+                            Descending
+                        </button>
+                    </div>
+                </div>
+            </div>
+            </div>
+            </div>
+        </div>
+        </div>
+        </div>
+
+        <div id="loading" class="hidden text-dopamine mb-4 font-bold text-sm"></div>
+        <div class="results-toolbar">
+            <h2 id="resultsHeading" class="panel-title text-sm font-extrabold">Showing 0 Games:</h2>
+            <div class="hidden-menu-shell">
+                <button type="button" id="hiddenMenuToggle" class="hidden-menu-toggle text-sm font-bold text-gray-300 py-1.5" onclick="toggleHiddenMenu()" aria-expanded="false" aria-label="Hidden games">
+                    Hidden games (<span id="hiddenCount">0</span>)
+                </button>
+                <div id="hiddenMenuPanel" class="hidden-menu-panel">
+                    <div class="hidden-menu-inner">
+                        <div id="hiddenMenuList" class="max-h-56 overflow-y-auto space-y-1"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div id="results" class="space-y-3"></div>
+
+        <footer class="site-footer">
+            <h2 class="panel-title mb-3">Credits</h2>
+            <p class="ui-label mb-1">Made by</p>
+            <div class="credit-byline">
+                <div id="creditName" class="credit-name"></div>
+                <div id="creditSocial" class="credit-social"></div>
+            </div>
+            <p class="ui-label mb-2">Data from</p>
+            <div class="site-footer-links text-sm font-bold">
+                <a href="https://steamcommunity.com/" target="_blank" rel="noopener noreferrer">Steam</a>
+                <a href="https://steamhunters.com/" target="_blank" rel="noopener noreferrer">SteamHunters</a>
+                <a href="https://psnprofiles.com/" target="_blank" rel="noopener noreferrer">PSNProfiles</a>
+                <a href="https://howlongtobeat.com/" target="_blank" rel="noopener noreferrer">HowLongToBeat</a>
+            </div>
+        </footer>
+    </div>
+
+    <script>
+        const SITE_TITLE = 'MatPlatLib | Steam Backlog Classifier';
+        const API_BASE = '';
+        // Fill these in — Credits footer at the bottom of the page
+        const CREDITS = {
+            name: 'hairmony',
+            github: 'https://github.com/hairmony',
+            linkedin: 'https://www.linkedin.com/in/hari-vallath',
+        };
+        document.title = SITE_TITLE;
+        document.getElementById('siteHeading').textContent = 'MAT•PLAT•LIB';
+        renderCredits();
+
+        function renderCredits() {
+            const nameEl = document.getElementById('creditName');
+            const socialEl = document.getElementById('creditSocial');
+            if (!nameEl || !socialEl) return;
+            nameEl.textContent = CREDITS.name || '';
+            const icons = {
+                github: '<img src="icons/GitHub.png" alt="" width="24" height="24">',
+                linkedin: '<img src="icons/Linkedin.png" alt="" width="24" height="24">',
+            };
+            const links = [
+                { key: 'github', label: 'GitHub', href: CREDITS.github },
+                { key: 'linkedin', label: 'LinkedIn', href: CREDITS.linkedin },
+            ];
+            socialEl.innerHTML = links.filter(item => item.href).map(item => (
+                `<a href="${item.href}" target="_blank" rel="noopener noreferrer" aria-label="${item.label}" title="${item.label}">${icons[item.key]}</a>`
+            )).join('');
+        }
+        const HIDDEN_KEY = 'platlist-hidden-games';
+        let cachedBacklogData = [];
+        const cardTints = {};
+        let showcaseData = {};
+        let scanTotalGames = 0;
+        let scanDone = true;
+        let hiddenGames = loadHiddenGames();
+
+        function loadHiddenGames() {
+            try {
+                const raw = JSON.parse(localStorage.getItem(HIDDEN_KEY) || '{}');
+                return raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
+            } catch (err) {
+                return {};
+            }
+        }
+
+        function saveHiddenGames() {
+            localStorage.setItem(HIDDEN_KEY, JSON.stringify(hiddenGames));
+        }
+
+        function isHidden(appid) {
+            return Object.prototype.hasOwnProperty.call(hiddenGames, String(appid));
+        }
+
+        function hideGame(appid) {
+            const game = cachedBacklogData.find(item => String(item.appid) === String(appid));
+            hiddenGames[String(appid)] = (game && game.name) || hiddenGames[String(appid)] || `App ${appid}`;
+            saveHiddenGames();
+            renderHiddenMenu();
+            renderFilteredGames();
+        }
+
+        function unhideGame(appid) {
+            delete hiddenGames[String(appid)];
+            saveHiddenGames();
+            renderHiddenMenu();
+            renderFilteredGames();
+        }
+
+        function escapeHtml(value) {
+            return String(value || '')
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;');
+        }
+
+        function setHiddenMenuOpen(open) {
+            const shell = document.querySelector('.hidden-menu-shell');
+            const btn = document.getElementById('hiddenMenuToggle');
+            if (shell) shell.classList.toggle('is-open', Boolean(open));
+            if (btn) btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+            if (open) requestAnimationFrame(markTruncatedTitles);
+        }
+
+        function toggleHiddenMenu() {
+            const shell = document.querySelector('.hidden-menu-shell');
+            setHiddenMenuOpen(!(shell && shell.classList.contains('is-open')));
+        }
+
+        function setSortDir(dir) {
+            const input = document.getElementById('sortDir');
+            if (input) input.value = dir;
+            document.querySelectorAll('[data-sort-dir]').forEach(btn => {
+                const on = btn.dataset.sortDir === dir;
+                btn.classList.toggle('is-active', on);
+                btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+            });
+            renderFilteredGames();
+        }
+
+        function toggleFilterPanel(btn) {
+            const shell = btn.closest('.search-filter-shell');
+            const panel = (shell && shell.querySelector('.filter-panel')) || btn.closest('.filter-panel');
+            if (!panel) return;
+            const collapsed = !panel.classList.contains('is-collapsed');
+            panel.classList.toggle('is-collapsed', collapsed);
+            if (shell) shell.classList.toggle('is-open', !collapsed);
+            btn.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+            const key = panel.dataset.filterPanel;
+            if (key) localStorage.setItem('platlist-filter-collapsed-' + key, collapsed ? '1' : '0');
+        }
+
+        function restoreFilterPanels() {
+            document.querySelectorAll('.filter-panel').forEach(panel => {
+                const key = panel.dataset.filterPanel;
+                const stored = key ? localStorage.getItem('platlist-filter-collapsed-' + key) : null;
+                const collapsed = stored === null ? true : stored === '1';
+                panel.classList.toggle('is-collapsed', Boolean(collapsed));
+                const shell = panel.closest('.search-filter-shell');
+                if (shell) shell.classList.toggle('is-open', !collapsed);
+                const btn = document.getElementById('searchFilterToggle');
+                if (btn) btn.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+            });
+        }
+
+        function renderHiddenMenu() {
+            const list = document.getElementById('hiddenMenuList');
+            const count = document.getElementById('hiddenCount');
+            const entries = Object.entries(hiddenGames).sort((a, b) => String(a[1]).localeCompare(String(b[1])));
+            if (count) count.innerText = String(entries.length);
+            if (!list) return;
+            if (!entries.length) {
+                list.innerHTML = '<p class="text-sm text-gray-500 px-2 py-1">No hidden games.</p>';
+                return;
+            }
+            list.innerHTML = entries.map(([appid, name]) => `
+                <div class="hidden-menu-row">
+                    <div class="game-title-wrap">
+                        <span class="game-title">${escapeHtml(name)}</span>
+                    </div>
+                    <button type="button" onclick="unhideGame('${escapeHtml(appid)}')" class="btn-icon flex-shrink-0 text-sm font-bold btn-dopamine px-2 py-0.5 rounded">
+                        <svg class="hi" aria-hidden="true"><use href="#hi-eye"></use></svg>
+                        Unhide
+                    </button>
+                </div>
+            `).join('');
+            const shell = document.querySelector('.hidden-menu-shell');
+            if (shell && shell.classList.contains('is-open')) {
+                requestAnimationFrame(markTruncatedTitles);
+            }
+        }
+
+        function readRangeFilter(id) {
+            const root = document.getElementById(id);
+            const minInput = root.querySelector('.range-min');
+            const maxInput = root.querySelector('.range-max');
+            const cap = Number(root.dataset.max);
+            const floor = Number(root.dataset.min);
+            let min = Number(minInput.value);
+            let max = Number(maxInput.value);
+            if (min > max) {
+                const swap = min;
+                min = max;
+                max = swap;
+                minInput.value = min;
+                maxInput.value = max;
+            }
+            return {
+                min,
+                max,
+                floor,
+                cap,
+                unit: root.dataset.unit || '',
+                openMax: root.dataset.openMax === '1' && max >= cap,
+                idle: min <= floor && max >= cap,
+            };
+        }
+
+        function valueInRange(value, range) {
+            if (range.idle) return true;
+            const n = Number(value || 0);
+            if (n < range.min) return false;
+            if (!range.openMax && n > range.max) return false;
+            return true;
+        }
+
+        function formatRangeLabel(range) {
+            const unit = range.unit;
+            const maxLabel = range.openMax ? `${range.cap}${unit}+` : `${range.max}${unit}`;
+            return `${range.min}${unit}–${maxLabel}`;
+        }
+
+        function syncRangeFilter(root) {
+            const range = readRangeFilter(root.id);
+            const fill = root.querySelector('.range-fill');
+            const label = root.querySelector('.range-filter-value');
+            const span = Math.max(1, range.cap - range.floor);
+            const thumb = 8;
+            const trackWidth = fill.parentElement.clientWidth;
+            const usable = Math.max(1, trackWidth - thumb * 2);
+            const leftPx = thumb + ((range.min - range.floor) / span) * usable;
+            const rightPx = thumb + ((range.max - range.floor) / span) * usable;
+            fill.style.left = `${leftPx}px`;
+            fill.style.right = 'auto';
+            fill.style.width = `${Math.max(0, rightPx - leftPx)}px`;
+            if (label) label.textContent = formatRangeLabel(range);
+            const minInput = root.querySelector('.range-min');
+            const maxInput = root.querySelector('.range-max');
+            minInput.style.zIndex = range.min > range.cap * 0.5 ? 3 : 2;
+            maxInput.style.zIndex = range.min > range.cap * 0.5 ? 2 : 3;
+        }
+
+        function bindRangeFilters() {
+            document.querySelectorAll('.range-filter').forEach(root => {
+                syncRangeFilter(root);
+                root.querySelectorAll('input[type="range"]').forEach(input => {
+                    input.addEventListener('input', () => {
+                        syncRangeFilter(root);
+                        renderFilteredGames();
+                    });
+                });
+            });
+        }
+
+        function uniqueStoreValues(key) {
+            const values = new Set();
+            cachedBacklogData.forEach(game => {
+                (game.store && game.store[key] || []).forEach(value => values.add(value));
+            });
+            return Array.from(values).sort();
+        }
+
+        function selectedValues(containerId) {
+            return [...document.querySelectorAll(`#${containerId} input[type="checkbox"]:checked`)].map(box => box.value);
+        }
+
+        function fillCheckboxGroup(id, values) {
+            const container = document.getElementById(id);
+            const previously = new Set(selectedValues(id));
+            container.innerHTML = values.map(value => {
+                const escaped = value.replace(/&/g, '&amp;').replace(/"/g, '&quot;');
+                const checked = previously.has(value) ? 'checked' : '';
+                return `<label class="filter-check"><input type="checkbox" value="${escaped}" ${checked} onchange="renderFilteredGames()"> ${escaped}</label>`;
+            }).join('') || `<span class="text-sm text-gray-500">No options yet</span>`;
+        }
+
+        function refreshSteamFilterOptions() {
+            fillCheckboxGroup('genreFilter', uniqueStoreValues('genres'));
+            fillCheckboxGroup('featureFilter', uniqueStoreValues('features'));
+            fillCheckboxGroup('playersFilter', uniqueStoreValues('players'));
+            fillCheckboxGroup('hardwareFilter', uniqueStoreValues('hardware'));
+        }
+
+        function matchesAnySelected(selected, gameValues) {
+            if (!selected.length) return true;
+            return selected.some(value => gameValues.includes(value));
+        }
+
+        function isFreeGame(game) {
+            if (game.store && game.store.is_free) return true;
+            const genres = (game.store && game.store.genres) || [];
+            return genres.some(name => String(name).toLowerCase() === 'free to play');
+        }
+
+        function hasAchievements(game) {
+            return Boolean(game.achievements && game.achievements.tracked && game.achievements.total > 0);
+        }
+
+        function dopamineIndex(game) {
+            if (!hasAchievements(game) || !Number.isFinite(Number(game.finishability))) return null;
+            return Math.round((100 - Number(game.finishability)) * 10) / 10;
+        }
+
+        const PLAY_STATES = [
+            { name: 'Platinumed', minPercent: 100, kind: 'platinum', className: 'metal-platinum' },
+            { name: 'Finalizing', minPercent: 90, kind: 'percent', className: 'metal-gold', glow: true },
+            { name: 'Advancing', minPercent: 75, kind: 'percent', className: 'metal-silver' },
+            { name: 'Halfway', minPercent: 50, kind: 'percent', className: 'tag-halfway' },
+            { name: 'Started', minPercent: 25, kind: 'percent', className: 'tag-started' },
+            { name: 'Played', minPercent: null, kind: 'played', className: 'tag-played' },
+            { name: 'Unplayed', minPercent: null, kind: 'unplayed', className: 'tag-unplayed' },
+        ];
+
+        function playStateOf(game) {
+            const pct = Number(game.achievements && game.achievements.percentage || 0);
+            const hours = Number(game.playtime_hours || 0);
+            if (game.is_platinum || pct >= 100) {
+                return PLAY_STATES.find(state => state.kind === 'platinum');
+            }
+            const byPercent = PLAY_STATES
+                .filter(state => state.kind === 'percent')
+                .sort((a, b) => b.minPercent - a.minPercent);
+            const matched = byPercent.find(state => pct >= state.minPercent);
+            if (matched) return matched;
+            if (hours > 0) return PLAY_STATES.find(state => state.kind === 'played');
+            return PLAY_STATES.find(state => state.kind === 'unplayed');
+        }
+
+        function dopamineBadgeHtml(value, title) {
+            const shown = value === '∞' ? '<span class="infinity-mark">∞</span>' : value;
+            return `<div class="score-badge rounded-lg text-center min-w-[5rem]" title="${String(title || '').replace(/"/g, '&quot;')}"><div class="ui-label">Dopamine Index</div><div class="ui-value">${shown}</div></div>`;
+        }
+
+        function statusTag(label, extraClass, extraStyle) {
+            return `<span class="nowrap-tag text-sm px-2 py-0.5 rounded font-bold ${extraClass || ''}" style="${extraStyle || ''}">${label}</span>`;
+        }
+
+        function almostDoneGlowStyle() {
+            return `animation-delay:-${performance.now() % 2100}ms`;
+        }
+
+        function hoursBoxColor(hours, noAchievements, isPlatinum) {
+            if (noAchievements || !Number.isFinite(Number(hours))) return 'hsla(0, 70%, 38%, 0.42)';
+            if (isPlatinum || Number(hours) <= 0) return '';
+            const t = Math.max(0, Math.min(1, Number(hours) / 40));
+            return `hsla(${Math.round(120 * (1 - t))}, 70%, 38%, 0.42)`;
+        }
+
+        function estimateTag(source) {
+            const raw = String(source || '').trim();
+            if (!raw) return '';
+            const key = raw.toLowerCase();
+            const names = {
+                psnprofiles: 'PSNProfiles',
+                steamhunters: 'SteamHunters',
+                howlongtobeat: 'HowLongToBeat',
+                'howlongtobeat (100%)': 'HowLongToBeat',
+                'steam achievement estimate': 'Steam',
+                'steam 100% average': 'Steam',
+                'steam completers (median)': 'Steam',
+            };
+            return `SOURCE: ${names[key] || raw}`;
+        }
+
+        function statBox(label, value, bg, title, sourceTag, extraClass, extraStyle) {
+            const tip = String(title || '').trim();
+            const tipAttr = tip ? ` data-tip="${tip.replace(/"/g, '&quot;')}"` : '';
+            const style = [bg ? `background-color: ${bg}` : '', extraStyle || ''].filter(Boolean).join('; ');
+            return `<div class="stat-box ${extraClass || ''}" style="${style}"${tipAttr}>
+                <div class="ui-label">${label}</div>
+                <div class="ui-value">${value}</div>
+                <div class="source-tag">${sourceTag || '&nbsp;'}</div>
+            </div>`;
+        }
+
+        function proxiedImage(url) {
+            if (!url) return '';
+            return `${API_BASE}/api/image?url=${encodeURIComponent(url)}`;
+        }
+
+        function steamHostFallbacks(url) {
+            if (!url) return [];
+            const hosts = [
+                'community.steamstatic.com',
+                'community.cloudflare.steamstatic.com',
+                'cdn.cloudflare.steamstatic.com',
+                'shared.cloudflare.steamstatic.com',
+                'community.akamai.steamstatic.com',
+                'cdn.akamai.steamstatic.com',
+                'steamcdn-a.akamaihd.net',
+                'media.steampowered.com',
+            ];
+            const seen = new Set();
+            const urls = [];
+            const push = (value) => {
+                if (value && !seen.has(value)) {
+                    seen.add(value);
+                    urls.push(value);
+                }
+            };
+            push(url);
+            hosts.forEach(host => push(url.replace(/https?:\/\/[^/]+/, `https://${host}`)));
+            return urls;
+        }
+
+        function fallbackImg(urls, className, letter) {
+            const list = (urls || []).filter(Boolean);
+            const first = list[0] || '';
+            const rest = list.slice(1).join('|');
+            const letterBox = `<div class="letter-fallback letter-fallback-tile">${letter || '?'}</div>`;
+            if (!first) {
+                return `<div class="relative ${className} bg-gray-900 border border-gray-700 overflow-hidden">${letterBox}</div>`;
+            }
+            return `<div class="relative ${className} bg-gray-900 border border-gray-700 overflow-hidden">
+                ${letterBox}
+                <img src="${first}" alt="" data-fallbacks="${rest}" referrerpolicy="no-referrer" class="absolute inset-0 z-10 w-full h-full object-cover" onerror="(function(img){var f=(img.dataset.fallbacks||'').split('|').filter(Boolean); if(!f.length){img.remove(); return;} img.dataset.fallbacks=f.slice(1).join('|'); img.src=f[0];})(this)">
+            </div>`;
+        }
+
+        function achievementIconHtml(ach) {
+            const letter = ((ach.game_name || ach.apiname || '?').trim()[0] || '?').toUpperCase();
+            const game = cachedBacklogData.find(item => String(item.appid) === String(ach.appid));
+            const raw = [
+                ...steamHostFallbacks(ach.icon),
+                ...steamHostFallbacks(ach.icon_gray),
+                ...steamHostFallbacks(ach.game_icon),
+                ...steamHostFallbacks(game && game.library_icon),
+                ...steamHostFallbacks(game && game.logo_url),
+            ];
+            const urls = [];
+            raw.forEach(url => {
+                urls.push(proxiedImage(url));
+                urls.push(url);
+            });
+            return fallbackImg(urls, 'w-full h-full rounded', letter);
+        }
+
+        function sortGames(games) {
+            const sortBy = document.getElementById('sortBy').value;
+            const dir = document.getElementById('sortDir').value === 'asc' ? 1 : -1;
+            if (sortBy === 'name') {
+                return [...games].sort((a, b) => (a.name || '').localeCompare(b.name || '') * dir);
+            }
+            const keys = [
+                {
+                    id: 'score',
+                    higherBetter: true,
+                    get: (game) => hasAchievements(game)
+                        ? Math.round((100 - Number(game.finishability || 0)) * 10) / 10
+                        : (dir > 0 ? Infinity : -Infinity),
+                },
+                {
+                    id: 'hours',
+                    higherBetter: false,
+                    get: (game) => Number(game.metadata && game.metadata.hours_remaining || 0),
+                },
+                {
+                    id: 'difficulty',
+                    higherBetter: false,
+                    get: (game) => Number(game.metadata && game.metadata.difficulty || 3.5),
+                },
+                {
+                    id: 'percentage',
+                    higherBetter: true,
+                    get: (game) => Number(game.achievements && game.achievements.percentage || 0),
+                },
+                {
+                    id: 'playtime',
+                    higherBetter: true,
+                    get: (game) => Number(game.playtime_hours || 0),
+                },
+            ];
+            const extra = [];
+            if (sortBy === 'est_hours') {
+                extra.push({
+                    id: 'est_hours',
+                    higherBetter: false,
+                    get: (game) => Number(game.metadata && game.metadata.hours || 0),
+                });
+            }
+            if (sortBy === 'remaining') {
+                extra.push({
+                    id: 'remaining',
+                    higherBetter: false,
+                    get: (game) => Number(game.achievements && game.achievements.remaining || 0),
+                });
+            }
+            const primaryId = ({
+                score: 'score',
+                hours_remaining: 'hours',
+                percentage: 'percentage',
+                playtime: 'playtime',
+            })[sortBy] || extra[0] && extra[0].id || 'score';
+            const ordered = [
+                ...extra.filter(key => key.id === primaryId),
+                ...keys.filter(key => key.id === primaryId),
+                ...keys.filter(key => key.id !== primaryId),
+            ];
+            return [...games].sort((a, b) => {
+                for (const key of ordered) {
+                    const av = key.get(a);
+                    const bv = key.get(b);
+                    if (av === bv) continue;
+                    const aBetter = key.higherBetter ? av > bv : av < bv;
+                    return (aBetter ? -1 : 1) * (dir < 0 ? 1 : -1);
+                }
+                return (a.name || '').localeCompare(b.name || '');
+            });
+        }
+
+        function formatUnlockTime(unlocktime) {
+            const ts = Number(unlocktime);
+            if (!ts || ts < 1) return '';
+            const date = new Date(ts * 1000);
+            if (Number.isNaN(date.getTime())) return '';
+            return date.toLocaleString(undefined, {
+                year: 'numeric',
+                month: 'short',
+                day: 'numeric',
+                hour: 'numeric',
+                minute: '2-digit',
+            });
+        }
+
+        function remainingSourceLabel(source) {
+            return ({
+                'per-trophy': 'Per Achievement',
+                'average': 'Avg',
+                'rarity-weighted': 'Rarity-Weighted',
+                'playtime-rate': 'From Your Playtime',
+                'few-left': 'Few Left',
+                'complete': 'Done',
+            })[source] || '';
+        }
+
+        function gameBannerUrls(game) {
+            const cdn = 'https://cdn.cloudflare.steamstatic.com';
+            const shared = 'https://shared.cloudflare.steamstatic.com/store_item_assets';
+            const raw = [
+                `${cdn}/steam/apps/${game.appid}/header.jpg`,
+                `${shared}/steam/apps/${game.appid}/header.jpg`,
+                `${cdn}/steam/apps/${game.appid}/capsule_231x87.jpg`,
+                game.icon_url
+            ].filter((url, index, list) => url && list.indexOf(url) === index);
+            const urls = [];
+            raw.forEach(url => {
+                urls.push(proxiedImage(url));
+                urls.push(url);
+            });
+            return urls.filter((url, index, list) => url && list.indexOf(url) === index);
+        }
+
+        function cardTintFromRgb(r, g, b) {
+            r /= 255; g /= 255; b /= 255;
+            const max = Math.max(r, g, b);
+            const min = Math.min(r, g, b);
+            let h = 0;
+            const l = (max + min) / 2;
+            const d = max - min;
+            const s = d === 0 ? 0 : d / (1 - Math.abs(2 * l - 1));
+            if (d !== 0) {
+                if (max === r) h = ((g - b) / d + (g < b ? 6 : 0)) / 6;
+                else if (max === g) h = ((b - r) / d + 2) / 6;
+                else h = ((r - g) / d + 4) / 6;
+            }
+            const hue = Math.round(h * 360);
+            const sat = Math.round(Math.min(62, Math.max(18, s * 100 * 0.9)));
+            return `hsl(${hue}, ${sat}%, 22%)`;
+        }
+
+        function applyBannerSample(card, source) {
+            const canvas = document.createElement('canvas');
+            const w = 32;
+            const h = 16;
+            canvas.width = w;
+            canvas.height = h;
+            const ctx = canvas.getContext('2d', { willReadFrequently: true });
+            ctx.drawImage(source, 0, 0, w, h);
+            const pixels = ctx.getImageData(0, 0, w, h).data;
+            let r = 0;
+            let g = 0;
+            let b = 0;
+            let n = 0;
+            for (let i = 0; i < pixels.length; i += 4) {
+                if (pixels[i + 3] < 160) continue;
+                const pr = pixels[i];
+                const pg = pixels[i + 1];
+                const pb = pixels[i + 2];
+                const luma = 0.2126 * pr + 0.7152 * pg + 0.0722 * pb;
+                if (luma < 22 || luma > 235) continue;
+                r += pr;
+                g += pg;
+                b += pb;
+                n += 1;
+            }
+            if (!n) return false;
+            paintCardTint(card, cardTintFromRgb(r / n, g / n, b / n));
+            return true;
+        }
+
+        function paintCardTint(card, tint) {
+            if (!card || !tint) return;
+            card.style.backgroundColor = tint;
+            card.style.borderColor = tint;
+            card.dataset.tinted = '1';
+            const appid = card.dataset.appid;
+            if (appid) cardTints[String(appid)] = tint;
+        }
+
+        async function tintCardFromBanner(img) {
+            const card = img.closest('[data-game-card]');
+            if (!card) return;
+            const cached = cardTints[String(card.dataset.appid || '')];
+            if (cached) {
+                paintCardTint(card, cached);
+                return;
+            }
+            if (card.dataset.tinted === '1' || !img.naturalWidth) return;
+            try {
+                if (applyBannerSample(card, img)) return;
+            } catch (err) {
+                // Cross-origin banners taint the canvas; fetch a clean copy next.
+            }
+            try {
+                const response = await fetch(img.currentSrc || img.src);
+                if (!response.ok) return;
+                const bitmap = await createImageBitmap(await response.blob());
+                applyBannerSample(card, bitmap);
+                if (bitmap.close) bitmap.close();
+            } catch (err) {
+                // Keep the default card color if sampling fails.
+            }
+        }
+
+        function gameCardArt(game) {
+            const letter = ((game.name || '?').trim()[0] || '?').toUpperCase();
+            const urls = [`${API_BASE}/api/banner/${game.appid}`, ...gameBannerUrls(game)];
+            if (game.logo_url) {
+                urls.push(proxiedImage(game.logo_url), game.logo_url);
+            }
+            const first = urls[0] || '';
+            const rest = [...new Set(urls.slice(1).filter(Boolean))].join('|');
+            const alreadyTinted = Boolean(cardTints[String(game.appid)]);
+            return `<div class="game-card-art">
+                <div class="letter-fallback letter-fallback-banner">${letter}</div>
+                ${first ? `<img src="${first}" alt="" data-fallbacks="${rest}" crossorigin="anonymous" referrerpolicy="no-referrer" class="z-10" ${alreadyTinted ? '' : 'onload="tintCardFromBanner(this)"'} onerror="(function(img){var f=(img.dataset.fallbacks||'').split('|').filter(Boolean); if(!f.length){img.remove(); return;} img.dataset.fallbacks=f.slice(1).join('|'); img.src=f[0];})(this)">` : ''}
+            </div>`;
+        }
+
+        async function fetchBacklog() {
+            const identifier = document.getElementById('steamInput').value.trim();
+            const resultsDiv = document.getElementById('results');
+            const loadingDiv = document.getElementById('loading');
+            const showcaseSection = document.getElementById('showcaseSection');
+            
+            if (!identifier) return;
+
+            resultsDiv.innerHTML = '';
+            const heading = document.getElementById('resultsHeading');
+            if (heading) heading.textContent = 'Loading 0 games...';
+            cachedBacklogData = [];
+            scanTotalGames = 0;
+            scanDone = false;
+            showcaseData = {};
+            document.getElementById('statPlatinums').innerText = '—';
+            document.getElementById('statPace').innerText = '—';
+            document.getElementById('statAvgCompletion').innerText = '—';
+            document.getElementById('recentAchievementsContainer').innerHTML = '';
+            showcaseSection.classList.remove('hidden');
+            loadingDiv.classList.remove('hidden');
+            loadingDiv.innerText = "Connecting to Steam and initializing stream...";
+            requestAnimationFrame(renderRecentAchievements);
+
+            try {
+                const response = await fetch(`${API_BASE}/api/library/${identifier}`);
+                if (!response.ok) {
+                    const errData = await response.json();
+                    loadingDiv.classList.add('hidden');
+                    showcaseSection.classList.add('hidden');
+                    resultsDiv.innerHTML = `<p class="text-red-400 text-sm font-bold">${errData.detail || 'Failed to fetch library'}</p>`;
+                    return;
+                }
+
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                let buffer = "";
+
+                while (true) {
+                    const { value, done } = await reader.read();
+                    if (done) break;
+
+                    buffer += decoder.decode(value, { stream: true });
+                    let lines = buffer.split("\n\n");
+                    buffer = lines.pop();
+
+                    for (const line of lines) {
+                        if (line.startsWith("data: ")) {
+                            const jsonStr = line.substring(6);
+                            const data = JSON.parse(jsonStr);
+
+                            if (data.error) {
+                                loadingDiv.classList.add('hidden');
+                                if (showcaseData.perfect_games == null && showcaseData.agc == null) {
+                                    showcaseSection.classList.add('hidden');
+                                }
+                                resultsDiv.innerHTML = `<p class="text-red-400 text-sm font-bold">${data.error}</p>`;
+                                return;
+                            }
+                            if (data.type === 'init') {
+                                scanTotalGames = Number(data.total) || 0;
+                                loadingDiv.innerText = `Loading 0 / ${scanTotalGames} games...`;
+                                renderFilteredGames();
+                            } else if (data.type === 'game') {
+                                cachedBacklogData.push(data);
+                                refreshSteamFilterOptions();
+                                const totalLabel = scanTotalGames || cachedBacklogData.length;
+                                loadingDiv.innerText = `Loaded & Ranked ${cachedBacklogData.length} of ${totalLabel} games...`;
+                                renderFilteredGames();
+                                renderShowcase();
+                            } else if (data.type === 'showcase') {
+                                showcaseData = Object.assign(showcaseData || {}, data.data || {});
+                                renderShowcase();
+                            } else if (data.type === 'done') {
+                                scanDone = true;
+                                loadingDiv.classList.add('hidden');
+                                renderFilteredGames();
+                                renderShowcase();
+                            }
+                        }
+                    }
+                }
+            } catch (err) {
+                loadingDiv.classList.add('hidden');
+                showcaseSection.classList.add('hidden');
+                resultsDiv.innerHTML = `<p class="text-red-400 text-sm font-bold">Error streaming from backend server.</p>`;
+            }
+        }
+
+        function formatAgc(value) {
+            if (value === null || value === undefined || value === '') return '';
+            const number = Number(value);
+            if (!Number.isFinite(number) || number < 0) return '';
+            const pct = number > 0 && number <= 1 ? number * 100 : number;
+            return `${Math.round(pct)}%`;
+        }
+
+        function renderShowcase() {
+            const showcaseSection = document.getElementById('showcaseSection');
+            const plats = cachedBacklogData.filter(game => game.is_platinum);
+            const paced = plats.filter(game => Number(game.playtime_hours) > 0 && Number(game.metadata && game.metadata.hours) > 0);
+            const tracked = cachedBacklogData.filter(game => game.achievements && game.achievements.tracked);
+            const shPlats = showcaseData.perfect_games;
+            const shAgc = formatAgc(showcaseData.agc);
+            document.getElementById('statPlatinums').innerText = (shPlats || shPlats === 0)
+                ? shPlats
+                : (showcaseData.total_platinums || plats.length || 0);
+            if (paced.length) {
+                const avgScore = paced.reduce((sum, game) => {
+                    const playtime = Number(game.playtime_hours);
+                    const estimate = Number(game.metadata.hours);
+                    return sum + Math.min(1, estimate / playtime);
+                }, 0) / paced.length;
+                document.getElementById('statPace').innerText = avgScore.toFixed(2);
+            } else {
+                document.getElementById('statPace').innerText = '—';
+            }
+            if (shAgc) {
+                document.getElementById('statAvgCompletion').innerText = shAgc;
+            } else if (tracked.length) {
+                const avgPct = tracked.reduce((sum, game) => sum + Number(game.achievements.percentage || 0), 0) / tracked.length;
+                document.getElementById('statAvgCompletion').innerText = `${Math.round(avgPct)}%`;
+            } else {
+                document.getElementById('statAvgCompletion').innerText = '—';
+            }
+
+            showcaseSection.classList.remove('hidden');
+            requestAnimationFrame(renderRecentAchievements);
+        }
+
+        function showHoverTip(html, event) {
+            const tip = document.getElementById('hoverTip');
+            tip.innerHTML = html;
+            tip.hidden = false;
+            moveHoverTip(event);
+            requestAnimationFrame(() => tip.classList.add('is-visible'));
+        }
+
+        function moveHoverTip(event) {
+            const tip = document.getElementById('hoverTip');
+            if (tip.hidden && !tip.classList.contains('is-visible')) return;
+            const pad = 10;
+            const offset = 16;
+            let x = event.clientX + offset;
+            let y = event.clientY + offset;
+            const r = tip.getBoundingClientRect();
+            if (x + r.width > window.innerWidth - pad) x = event.clientX - r.width - 8;
+            if (y + r.height > window.innerHeight - pad) y = event.clientY - r.height - 8;
+            tip.style.left = `${Math.max(pad, x)}px`;
+            tip.style.top = `${Math.max(pad, y)}px`;
+        }
+
+        function hideHoverTip() {
+            const tip = document.getElementById('hoverTip');
+            tip.classList.remove('is-visible');
+        }
+
+        function renderRecentAchievements() {
+            const container = document.getElementById('recentAchievementsContainer');
+            const statsGrid = document.getElementById('accountStatsGrid');
+            const all = showcaseData.recent_achievements || [];
+            container.innerHTML = '';
+            const width = Math.round((statsGrid || container).getBoundingClientRect().width);
+            if (width <= 0) return;
+            container.style.width = `${width}px`;
+            const gap = 4;
+            const target = 64;
+            const nFit = Math.max(1, Math.floor((width + gap) / (target + gap)));
+            if (!all.length && scanDone) {
+                container.style.width = '';
+                container.innerHTML = `<span class="text-sm text-gray-500">No recent achievement activity found or profile details are private.</span>`;
+                return;
+            }
+            const n = all.length ? Math.min(20, all.length, nFit) : nFit;
+            const tileSize = (width - (n - 1) * gap) / n;
+            const addTile = (className, html) => {
+                const tile = document.createElement('div');
+                tile.className = className;
+                tile.style.width = `${tileSize}px`;
+                tile.style.height = `${tileSize}px`;
+                tile.style.flex = `0 0 ${tileSize}px`;
+                tile.style.fontSize = `${tileSize}px`;
+                if (html) tile.innerHTML = html;
+                return tile;
+            };
+            if (!all.length) {
+                for (let i = 0; i < n; i += 1) {
+                    const tile = addTile('achievement-tile skeleton-tile skeleton-block');
+                    container.appendChild(tile);
+                }
+                return;
+            }
+            all.slice(0, n).forEach(ach => {
+                const tile = addTile('achievement-tile', achievementIconHtml(ach));
+                const unlockedAt = formatUnlockTime(ach.unlocktime);
+                const tipHtml = `<p class="text-sm text-gray-400 mb-0.5">${escapeHtml(ach.game_name || '')}</p>
+                    <p class="font-extrabold text-white mb-1">${escapeHtml(ach.apiname || '')}</p>
+                    <p class="text-sm text-gray-300">${escapeHtml(ach.description || '')}</p>
+                    ${unlockedAt ? `<p class="text-sm text-gray-400 mt-1.5" style="font-weight:400">${escapeHtml(unlockedAt)}</p>` : ''}`;
+                tile.addEventListener('mouseenter', (e) => showHoverTip(tipHtml, e));
+                tile.addEventListener('mousemove', moveHoverTip);
+                tile.addEventListener('mouseleave', hideHoverTip);
+                container.appendChild(tile);
+            });
+        }
+
+        function renderFilteredGames() {
+            const resultsDiv = document.getElementById('results');
+            const showCompleted = document.getElementById('showCompletedToggle').checked;
+            const showNoAchievements = document.getElementById('showNoAchievementsToggle').checked;
+            const showHidden = document.getElementById('showHiddenToggle').checked;
+            const showFree = document.getElementById('showFreeToggle').checked;
+            const searchFilter = document.getElementById('nameFilterInput').value.toLowerCase();
+            const genres = selectedValues('genreFilter');
+            const features = selectedValues('featureFilter');
+            const players = selectedValues('playersFilter');
+            const hardware = selectedValues('hardwareFilter');
+            const completionRange = readRangeFilter('completionRange');
+            const estHoursRange = readRangeFilter('estHoursRange');
+            const remainingHoursRange = readRangeFilter('remainingHoursRange');
+
+            const filtered = sortGames(cachedBacklogData.filter(game => {
+                if (isHidden(game.appid) && !showHidden) return false;
+                if (!showCompleted && game.is_platinum) return false;
+                if (!showNoAchievements && !hasAchievements(game)) return false;
+                if (!showFree && isFreeGame(game)) return false;
+                if (!valueInRange(game.achievements && game.achievements.percentage, completionRange)) return false;
+                if (searchFilter && !game.name.toLowerCase().includes(searchFilter)) return false;
+                if (!matchesAnySelected(genres, game.store && game.store.genres || [])) return false;
+                if (!matchesAnySelected(features, game.store && game.store.features || [])) return false;
+                if (!matchesAnySelected(players, game.store && game.store.players || [])) return false;
+                if (!matchesAnySelected(hardware, game.store && game.store.hardware || [])) return false;
+                if (!valueInRange(game.metadata && game.metadata.hours, estHoursRange)) return false;
+                if (!valueInRange(game.metadata && game.metadata.hours_remaining, remainingHoursRange)) return false;
+                return true;
+            }));
+            const ordered = [
+                ...filtered.filter(game => game.is_platinum),
+                ...filtered.filter(game => !game.is_platinum && hasAchievements(game)),
+                ...filtered.filter(game => !game.is_platinum && !hasAchievements(game)),
+            ];
+            const heading = document.getElementById('resultsHeading');
+            if (heading) {
+                heading.textContent = scanDone
+                    ? `Showing ${ordered.length} Games:`
+                    : `Loading ${cachedBacklogData.length}${scanTotalGames ? ` / ${scanTotalGames}` : ''} games...`;
+            }
+            if (scanDone && !cachedBacklogData.length) {
+                resultsDiv.innerHTML = '';
+                return;
+            }
+
+            let html = `<div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4 items-stretch">`;
+            let backlogRank = 0;
+            
+            ordered.forEach((game) => {
+                const pct = Number(game.achievements.percentage || 0);
+                const achValue = game.achievements.tracked
+                    ? `${pct}%`
+                    : '—';
+                const achTitle = game.achievements.tracked
+                    ? `${game.achievements.unlocked}/${game.achievements.total} Achievements`
+                    : 'No Achievements / Hidden';
+
+                let art = gameCardArt(game);
+
+                let psnUrl = game.metadata.psnprofiles_url || '#';
+                let steamGuidesUrl = game.metadata.steamhunters_url || '#';
+                const remainingLabel = remainingSourceLabel(game.metadata.hours_remaining_source);
+                const estimateSource = game.metadata.source || '';
+                const noAchievements = !hasAchievements(game);
+                const hidden = isHidden(game.appid);
+                const hoursLeft = game.is_platinum || noAchievements ? 0 : Number(game.metadata.hours_remaining || 0);
+                const dopamine = dopamineIndex(game);
+                const state = playStateOf(game);
+                let rankLabel = '';
+                if (!hidden && !game.is_platinum && !noAchievements) {
+                    backlogRank += 1;
+                    rankLabel = `<span class="rank-number ui-value text-3xl">#${backlogRank}</span>`;
+                }
+                const tags = hidden ? statusTag('Hidden', 'tag-hidden') : '';
+                const glowOn = !hidden && state.glow;
+                const completionClass = [
+                    noAchievements ? 'tag-none' : (state.className || ''),
+                    glowOn ? 'almost-done-glow' : '',
+                ].filter(Boolean).join(' ');
+                const completionGlow = glowOn ? almostDoneGlowStyle() : '';
+                const tint = cardTints[String(game.appid)];
+                const cardStyle = tint ? `background-color: ${tint}; border-color: ${tint}` : '';
+                const scoreBadge = game.is_platinum
+                    ? dopamineBadgeHtml('∞', 'Platinumed')
+                    : (
+                        noAchievements
+                            ? dopamineBadgeHtml('-1', 'Cannot be platinumed')
+                            : dopamineBadgeHtml(dopamine, '0-100: higher means more likely dopamine / closer to platinum')
+                    );
+                const hoursValue = game.is_platinum ? '0h' : (noAchievements ? '∞' : `~${hoursLeft}h`);
+                const estValue = noAchievements ? '—' : `~${Number(game.metadata.hours || 0)}h`;
+                const hoursTitle = remainingLabel;
+                const sourceTag = noAchievements ? '' : estimateTag(estimateSource);
+                const hideBox = hidden
+                    ? `<button type="button" onclick="unhideGame('${game.appid}')" class="ml-auto btn-icon btn-dopamine px-4 py-2 rounded-lg font-extrabold text-sm"><svg class="hi" aria-hidden="true"><use href="#hi-eye"></use></svg>UNHIDE</button>`
+                    : `<button type="button" onclick="hideGame('${game.appid}')" class="ml-auto btn-icon bg-red-600 hover:bg-red-500 text-white px-4 py-2 rounded-lg font-extrabold text-sm"><svg class="hi" aria-hidden="true"><use href="#hi-eye-slash"></use></svg>HIDE</button>`;
+
+                html += `
+                    <div data-game-card data-appid="${game.appid}"${tint ? ' data-tinted="1"' : ''}${cardStyle ? ` style="${cardStyle}"` : ''} class="game-card bg-gray-800 rounded-lg border border-gray-700 flex flex-col">
+                        <div class="game-card-head px-3 py-2 flex items-center justify-between gap-2 border-b border-gray-700/80">
+                            <div>${rankLabel}</div>
+                            <div>${scoreBadge}</div>
+                        </div>
+                        ${art}
+                        <div class="p-3 flex flex-col gap-2 flex-1">
+                            <div class="game-title-row flex items-center justify-between gap-2">
+                                <div class="game-title-wrap">
+                                    <span class="game-title">${escapeHtml(game.name)}</span>
+                                </div>
+                                ${tags ? `<div class="flex items-center justify-end gap-2 flex-shrink-0">${tags}</div>` : ''}
+                            </div>
+                            <div class="stat-grid">
+                                ${statBox('Plat. time left', hoursValue, hoursBoxColor(hoursLeft, noAchievements, game.is_platinum), hoursTitle, sourceTag)}
+                                ${statBox('Completion', achValue, '', achTitle, noAchievements ? 'NO ACHIEVEMENTS' : String(state.name || '').toUpperCase(), completionClass, completionGlow)}
+                                ${statBox('Total plat. time', estValue, '', '', sourceTag)}
+                                ${statBox('Playtime', `${game.playtime_hours}h`, '', '', '')}
+                            </div>
+                            <div class="flex items-center gap-4 mt-auto pt-1">
+                                <a href="${psnUrl}" target="_blank" class="text-sm font-extrabold underline decoration-2 underline-offset-2 link-playstation">PSNProfiles</a>
+                                <a href="${steamGuidesUrl}" target="_blank" class="text-sm font-extrabold underline decoration-2 underline-offset-2 link-steam">SteamHunters</a>
+                                ${hideBox}
+                            </div>
+                        </div>
+                    </div>
+                `;
+            });
+            html += `</div>`;
+            resultsDiv.innerHTML = html;
+            requestAnimationFrame(() => {
+                markTruncatedTitles();
+                bindStatBoxTips();
+            });
+        }
+
+        function markTruncatedTitles() {
+            document.querySelectorAll('.game-title-wrap').forEach(wrap => {
+                const title = wrap.querySelector('.game-title');
+                if (!title || wrap.clientWidth <= 0) return;
+                title.classList.remove('is-marquee');
+                title.style.animation = '';
+                title.style.removeProperty('--marquee-x');
+                const overflow = title.scrollWidth - wrap.clientWidth;
+                const truncated = overflow > 2;
+                wrap.classList.toggle('is-truncated', truncated);
+                if (truncated) {
+                    const duration = Math.max(3.2, overflow / 28);
+                    title.style.setProperty('--marquee-x', `-${overflow}px`);
+                    title.style.animationDuration = `${duration}s`;
+                    title.classList.add('is-marquee');
+                }
+                wrap.onmouseenter = null;
+                wrap.onmousemove = null;
+                wrap.onmouseleave = null;
+                const hoverTarget = wrap.closest('.game-title-row') || wrap;
+                hoverTarget.onmouseenter = (e) => {
+                    showHoverTip(`<p class="font-extrabold text-white">${escapeHtml(title.textContent || '')}</p>`, e);
+                };
+                hoverTarget.onmousemove = moveHoverTip;
+                hoverTarget.onmouseleave = hideHoverTip;
+            });
+        }
+
+        function bindStatBoxTips() {
+            document.querySelectorAll('.stat-box[data-tip]').forEach(box => {
+                const text = box.getAttribute('data-tip') || '';
+                if (!text) return;
+                box.onmouseenter = (e) => {
+                    showHoverTip(`<p class="font-extrabold text-white">${escapeHtml(text)}</p>`, e);
+                };
+                box.onmousemove = moveHoverTip;
+                box.onmouseleave = hideHoverTip;
+            });
+        }
+
+        window.addEventListener('resize', () => {
+            markTruncatedTitles();
+            if (!document.getElementById('showcaseSection').classList.contains('hidden')) {
+                renderRecentAchievements();
+            }
+        });
+
+        function bindClearableFields() {
+            document.querySelectorAll('.field-clear[data-clear]').forEach(button => {
+                const input = document.getElementById(button.dataset.clear);
+                const wrap = button.closest('.field-wrap');
+                if (!input || !wrap) return;
+                const sync = () => wrap.classList.toggle('has-value', Boolean(input.value));
+                input.addEventListener('input', sync);
+                button.addEventListener('click', () => {
+                    input.value = '';
+                    sync();
+                    input.dispatchEvent(new Event('input', { bubbles: true }));
+                    input.focus();
+                });
+                sync();
+            });
+        }
+
+        refreshSteamFilterOptions();
+        renderHiddenMenu();
+        bindClearableFields();
+        bindRangeFilters();
+        restoreFilterPanels();
+        bindMetalSheen();
+
+        function bindMetalSheen() {
+            const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+            const root = document.documentElement;
+            const started = performance.now();
+            const apply = () => {
+                const idle = reduce ? 0 : ((performance.now() - started) / 1000) * 1.6;
+                const scrolled = (window.scrollY || 0) * 0.07;
+                root.style.setProperty('--gradient_rotate', `${(idle + scrolled) % 360}deg`);
+            };
+            apply();
+            window.addEventListener('scroll', apply, { passive: true });
+            if (!reduce) {
+                const tick = () => {
+                    apply();
+                    requestAnimationFrame(tick);
+                };
+                requestAnimationFrame(tick);
+            }
+        }
+    </script>
+    <div id="hoverTip" class="hover-tip" hidden></div>
+</body>
+</html>

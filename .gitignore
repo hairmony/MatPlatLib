@@ -1,3 +1,19 @@
+# API secrets, don't look
+.env
+.env.*
+!.env.example
+
+# Local scrape caches
+guide_cache.json
+store_cache.json
+
+# OneDrive and Goog Drive stuff
+desktop.ini
+Thumbs.db
+.DS_Store
+.tmp.driveupload/
+.tmp.drivedownload/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
